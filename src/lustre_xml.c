@@ -232,33 +232,33 @@ void lustre_entry_dump(struct lustre_entry *entry, int depth)
 	}
 	prefix[i] = '\0';
 
-	INFO("%sentry %s, mode %s",
-	     prefix, entry->le_subpath,
-	     mode2string(entry->le_mode));
+	LINFO("%sentry %s, mode %s",
+	      prefix, entry->le_subpath,
+	      mode2string(entry->le_mode));
 
 	list_for_each_entry(item,
 	                    &entry->le_item_types,
 	                    lit_linkage) {
-		INFO("%s item %s, pattern %s, %llu",
-		     prefix, item->lit_type_name,
-		     item->lit_pattern,
-		     (unsigned long long)item->lit_regex.re_nsub);
+		LINFO("%s item %s, pattern %s, %llu",
+		      prefix, item->lit_type_name,
+		      item->lit_pattern,
+		      (unsigned long long)item->lit_regex.re_nsub);
 		list_for_each_entry(field,
 				    &item->lit_field_list,
 				    lft_linkage) {
-			INFO("%s  field[%d] %s, type %s",
-			     prefix, field->lft_index,
-			     field->lft_name,
-			     lustre_field_type2string(field->lft_type));
+			LINFO("%s  field[%d] %s, type %s",
+			      prefix, field->lft_index,
+			      field->lft_name,
+			      lustre_field_type2string(field->lft_type));
 		}
 	}
 
 	list_for_each_entry(subpath_field,
 	                    &entry->le_subpath_field_types,
 	                    lpft_linkage) {
-		INFO("%s subpath_field[%d] %s",
-		     prefix, subpath_field->lpft_index,
-		     subpath_field->lpft_name);
+		LINFO("%s subpath_field[%d] %s",
+		      prefix, subpath_field->lpft_index,
+		      subpath_field->lpft_name);
 	}
 
 	list_for_each_entry(child,
@@ -283,17 +283,17 @@ void lustre_entry_dump_active(struct lustre_entry *entry, int depth)
 	}
 	prefix[i] = '\0';
 
-	INFO("%sentry %s, mode %s",
-	     prefix, entry->le_subpath,
-	     mode2string(entry->le_mode));
+	LINFO("%sentry %s, mode %s",
+	      prefix, entry->le_subpath,
+	      mode2string(entry->le_mode));
 
 	list_for_each_entry(item,
 			    &entry->le_active_item_types,
 			    lit_active_linkage) {
-		INFO("%s item %s, pattern %s, %llu",
-		     prefix, item->lit_type_name,
-		     item->lit_pattern,
-		     (unsigned long long)item->lit_regex.re_nsub);
+		LINFO("%s item %s, pattern %s, %llu",
+		      prefix, item->lit_type_name,
+		      item->lit_pattern,
+		      (unsigned long long)item->lit_regex.re_nsub);
 	}
 
 	list_for_each_entry(child,
