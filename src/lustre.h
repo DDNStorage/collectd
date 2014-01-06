@@ -221,4 +221,9 @@ lustre_field_type_add(struct lustre_item_type *type,
 void lustre_item_type_free(struct lustre_item_type *type);
 struct lustre_item_type *lustre_item_type_alloc(void);
 int lustre_compile_regex(regex_t *preg, const char *regex);
+
+#define LINFO(format, ...)                                                     \
+do {                                                                           \
+    INFO("%s:%d:%s(): "format, __FILE__, __LINE__, __FUNCTION__, ## __VA_ARGS__);  \
+} while (0)
 #endif /* LUSTRE_H */

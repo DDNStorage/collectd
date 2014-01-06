@@ -132,18 +132,18 @@ static void lustre_instance_submit(const char *host,
 
 	vl.values = values;
 	vl.values_len = 1;
-	INFO("submit: host %s, "
-	     "plugin %s, "
-	     "plugin_instance %s, "
-	     "type %s, "
-	     "type_instance %s, "
-	     "value %llu",
-	     host,
-	     plugin,
-	     plugin_instance,
-	     type,
-	     type_instance,
-	     (unsigned long long)value);
+	LINFO("host %s, "
+	      "plugin %s, "
+	      "plugin_instance %s, "
+	      "type %s, "
+	      "type_instance %s, "
+	      "value %llu",
+	      host,
+	      plugin,
+	      plugin_instance,
+	      type,
+	      type_instance,
+	      (unsigned long long)value);
 	sstrncpy (vl.host, host, sizeof (vl.host));
 	sstrncpy (vl.plugin, plugin, sizeof (vl.plugin));
 	sstrncpy (vl.plugin_instance, plugin_instance, sizeof (vl.plugin_instance));
@@ -357,16 +357,7 @@ static int lustre_data_submit(struct lustre_item_type *type,
 
 	for (i = 1; i <= type->lit_field_number; i++) {
 		if (type->lit_field_array[i]->lft_type == TYPE_STRING) {
-			INFO("submit: field[%d] %s is %s",
-			     i,
-			     type->lit_field_array[i]->lft_name,
-			     data->lid_fields[i].lf_string);
 		} else if (type->lit_field_array[i]->lft_type == TYPE_NUMBER) {
-			INFO("submit: field[%d] %s is %llu",
-			     i,
-			     type->lit_field_array[i]->lft_name,
-			     (long long unsigned int)
-			     data->lid_fields[i].lf_value);
 			lustre_submit(&type->lit_field_array[i]->lft_submit,
 				      path_head,
 				      type->lit_field_array,
@@ -445,7 +436,6 @@ static int lustre_parse(struct lustre_item_type *type,
 		goto out;
 	}
 
-	INFO("parsing %s", type->lit_type_name);
 	while (1) {
 		int i = 0;
 		int nomatch = regexec(&type->lit_regex, previous,
@@ -465,8 +455,7 @@ static int lustre_parse(struct lustre_item_type *type,
 
 			start = fields[i].rm_so + (previous - content);
 			finish = fields[i].rm_eo + (previous - content);
-			if (i == 0) {
-			} else {
+			if (i != 0 ) {
 				if (finish - start > MAX_JOBSTAT_FIELD_LENGTH - 1) {
 					ERROR("field is too long %d", finish - start);
 					status = -1;
@@ -476,21 +465,17 @@ static int lustre_parse(struct lustre_item_type *type,
 				strncpy(string,
 					content + start, finish - start);
 				string[finish - start] = '\0';
-				INFO("%d is '%s' (bytes %d:%d)", i,
-				     string, start, finish);
 
 				strcpy(data->lid_fields[i].lf_string, string);
+				LINFO("type %s, field %d, bytes %d:%d, value %s",
+				      type->lit_type_name, i,
+				      start, finish, string);
 				if (type->lit_field_array[i]->lft_type == TYPE_STRING) {
 					/* TODO: combine string algorithm */
-					INFO("jobstat: %d is %s\n", i,
-					     data->lid_fields[i].lf_string);
 				} else if (type->lit_field_array[i]->lft_type == TYPE_NUMBER) {
 					value = strtoull(string,
 							 NULL, 10);
 					data->lid_fields[i].lf_value = value;
-					INFO("jobstat: %d is %llu\n", i,
-					     (long long unsigned int)
-					     data->lid_fields[i].lf_value);
 				} else {
 					assert(type->lit_field_array[i]->lft_type == TYPE_NULL);
 				}
@@ -499,7 +484,6 @@ static int lustre_parse(struct lustre_item_type *type,
 
 		if (lustre_item_match(data->lid_fields, type->lit_field_number,
 				       type)) {
-			INFO("sumiting %s", type->lit_type_name);
 			lustre_data_submit(type, path_head, data);
 		}
 		previous += fields[0].rm_eo;
@@ -667,11 +651,11 @@ lustre_subpath_match(char *string,
 			if (i != 0) {
 				strncpy(subpath_fields->lpfs_fileds[i].lpf_value,
 					string + start, finish - start);
+				LINFO("subpath %d, bytes %d:%d, value %.*s\n",
+				      i,
+				      start, finish,
+				      (finish - start), string + start);
 			}
-			INFO("$%d '%.*s' (bytes %d:%d)\n",
-			     i,
-			     (finish - start),
-			     string + start, start, finish);
 		}
 		pointer += fields[0].rm_eo;
 	}
@@ -715,9 +699,9 @@ _lustre_entry_read(struct lustre_entry *entry,
 		subpath++;
 	}
 	strcat(path, subpath);
-	INFO("entry %s", path);
 	assert(entry->le_mode == S_IFREG || entry->le_mode == S_IFDIR);
 
+	LINFO("going down to path %s", path);
 	if (entry->le_mode == S_IFREG) {
 		assert(list_empty(&entry->le_active_children));
 		assert(list_empty(&entry->le_children));
@@ -729,10 +713,15 @@ _lustre_entry_read(struct lustre_entry *entry,
 		list_for_each_entry(type,
 				    &entry->le_active_item_types,
 				    lit_active_linkage) {
-			INFO("type %s", type->lit_type_name);
 			assert(!list_empty(&type->lit_items));
+			LINFO("parsing %s for type %s",
+			      path,
+			      type->lit_type_name);
 			status = lustre_parse(type, filebuf, path_head);
 			if (status) {
+				ERROR("unable to parse file %s for type %s",
+				      path,
+				      type->lit_type_name);
 				return status;
 			}
 		}
@@ -752,7 +741,7 @@ _lustre_entry_read(struct lustre_entry *entry,
 	return 0;
 }
 
-static void
+void
 lustre_subpath_field_dump(struct list_head *path_head)
 {
 	struct lustre_subpath_fields *subpath_fields;
@@ -762,7 +751,7 @@ lustre_subpath_field_dump(struct list_head *path_head)
 	                    path_head,
 	                    lpfs_linkage) {
 		for (i = 1; i <= subpath_fields->lpfs_field_number; i++) {
-			INFO("field[%d]: %s", i, subpath_fields->lpfs_fileds[i].lpf_value);
+			LINFO("subpath[%d]: %s", i, subpath_fields->lpfs_fileds[i].lpf_value);
 		}
 	}
 }
@@ -801,13 +790,13 @@ lustre_entry_read(struct lustre_entry *entry,
 						      &subpath_fields);
 			if (status == 1) {
 				subpath = dp->d_name;
-				lustre_subpath_field_dump(path_head);
 				status =  _lustre_entry_read(entry, pwd, subpath, path_head);
 				if (status) {
 					break;
 				}
 				list_del_init(&subpath_fields->lpfs_linkage);
 			} else if (status) {
+				ERROR("failed to match subpath %s", dp->d_name);
 				break;
 			}
 		}
@@ -982,7 +971,7 @@ static void lustre_config_dump(struct lustre_configs *conf)
 		return;
 	}
 
-	INFO("Lustre config: debug %s", conf->lc_debug ? "true" : "false");
+	LINFO("Lustre config: debug %s", conf->lc_debug ? "true" : "false");
 }
 
 static int lustre_config_common(const oconfig_item_t *ci,
@@ -1184,7 +1173,7 @@ static int lustre_config_item(const oconfig_item_t *ci,
 			list_add(&item->li_type->lit_active_linkage,
 				 &entry->le_active_item_types);
 		}
-		INFO("entry %s", entry->le_subpath);
+		LINFO("entry %s", entry->le_subpath);
 		lustre_entry_activate(entry);
 	}
 
