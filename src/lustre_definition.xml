@@ -170,7 +170,7 @@
 			<entry>
 				<subpath>
 					<subpath_type>regular_expression</subpath_type>
-					<path>(^.+-MDT[[:digit:]]+$)</path>
+					<path>(^.+-MDT[0-9a-fA-F]+$)</path>
 					<subpath_field>
 						<index>1</index>
 						<name>mdt_name</name>
@@ -1112,7 +1112,7 @@
 			<entry>
 				<subpath>
 					<subpath_type>regular_expression</subpath_type>
-					<path>(^.+-OST[[:digit:]]+$)</path>
+					<path>(^.+-OST[0-9a-fA-F]+$)</path>
 					<subpath_field>
 						<index>1</index>
 						<name>ost_name</name>
