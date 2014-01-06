@@ -177,8 +177,9 @@ struct lustre_item {
 };
 
 struct lustre_configs {
-	struct lustre_definition	lc_definition;
-	_Bool				lc_debug;
+	struct lustre_definition	 lc_definition;
+	regex_t				 lc_regex;
+	_Bool				 lc_debug;
 };
 
 struct lustre_item_data {
