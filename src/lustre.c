@@ -205,8 +205,6 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				    char *value)
 {
 	int status = 0;
-	char *pattern = "\\$\\{(subpath|content):(.+)\\}";
-	regex_t regex;
 	regmatch_t matched_fields[3];
 	char *pointer = option->lso_string;
 	char *value_pointer = value;
@@ -216,11 +214,8 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	struct lustre_field *content_field;
 	int i;
 
-	status = lustre_compile_regex (&regex,
-				       pattern);
-	assert(status == 0);
 	while (1) {
-		status = regexec(&regex,
+		status = regexec(&lustre_config_g->lc_regex,
 	        		 pointer,
 	        		 3,
 	        		 matched_fields, 0);
@@ -279,7 +274,6 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 		}
 		pointer += matched_fields[0].rm_eo;
 	}
-	regfree(&regex);
 
 	return status;
 }
@@ -959,6 +953,7 @@ lustre_item_type_find(struct lustre_entry *entry,
 void lustre_config_free(struct lustre_configs *conf)
 {
 	assert(conf);
+	regfree(&conf->lc_regex);
 	lustre_definition_fini(&conf->lc_definition);
 
 	sfree(conf);
@@ -1186,12 +1181,16 @@ static int lustre_config(oconfig_item_t *ci)
 {
 	int i;
 	int status = 0;
+	const char *pattern = "\\$\\{(subpath|content):(.+)\\}";
 
 	lustre_config_g = calloc(1, sizeof (struct lustre_configs));
 	if (lustre_config_g == NULL) {
 		ERROR("not enough memory");
 		return -1;
 	}
+
+	status = lustre_compile_regex(&lustre_config_g->lc_regex, pattern);
+	assert(status == 0);
 
 	for (i = 0; i < ci->children_num; i++)
 	{
@@ -1219,7 +1218,7 @@ static int lustre_config(oconfig_item_t *ci)
 
 out:
 	if (status != 0) {
-		lustre_config_free (lustre_config_g);
+		lustre_config_free(lustre_config_g);
 		lustre_config_g = NULL;
 	}
 	return status;
