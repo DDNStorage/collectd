@@ -132,25 +132,25 @@ static void lustre_instance_submit(const char *host,
 
 	vl.values = values;
 	vl.values_len = 1;
+	sstrncpy (vl.host, host, sizeof (vl.host));
+	sstrncpy (vl.plugin, plugin, sizeof (vl.plugin));
+	sstrncpy (vl.plugin_instance, plugin_instance, sizeof (vl.plugin_instance));
+	sstrncpy (vl.type, type, sizeof (vl.type));
+	sstrncpy (vl.type_instance, type_instance, sizeof (vl.type_instance));
 	LINFO("host %s, "
 	      "plugin %s, "
 	      "plugin_instance %s, "
 	      "type %s, "
 	      "type_instance %s, "
 	      "value %llu",
-	      host,
-	      plugin,
-	      plugin_instance,
-	      type,
-	      type_instance,
-	      (unsigned long long)value);
-	sstrncpy (vl.host, host, sizeof (vl.host));
-	sstrncpy (vl.plugin, plugin, sizeof (vl.plugin));
-	sstrncpy (vl.plugin_instance, plugin_instance, sizeof (vl.plugin_instance));
-	sstrncpy (vl.type, type, sizeof (vl.type));
-	sstrncpy (vl.type_instance, type_instance, sizeof (vl.type_instance));
+	      vl.host,
+	      vl.plugin,
+	      vl.plugin_instance,
+	      vl.type,
+	      vl.type_instance,
+	      (unsigned long long)vl.values[0].derive);
 
-	plugin_dispatch_values (&vl);
+	plugin_dispatch_values(&vl);
 }
 
 static struct lustre_subpath_field *
