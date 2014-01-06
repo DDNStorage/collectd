@@ -1149,7 +1149,7 @@ static int lustre_config_item(const oconfig_item_t *ci,
 			}
 			free(value);
 		} else if (strcasecmp("Rule", child->key) == 0) {
-			status = lustre_config_item_rule (child, item);
+			status = lustre_config_item_rule(child, item);
 			if (status) {
 				ERROR("Item: failed to parse rule");
 				break;
@@ -1173,7 +1173,9 @@ static int lustre_config_item(const oconfig_item_t *ci,
 			list_add(&item->li_type->lit_active_linkage,
 				 &entry->le_active_item_types);
 		}
-		LINFO("entry %s", entry->le_subpath);
+		LINFO("enabling entry %s, type %s",
+		      entry->le_subpath,
+		      item->li_type->lit_type_name);
 		lustre_entry_activate(entry);
 	}
 
@@ -1198,7 +1200,7 @@ static int lustre_config(oconfig_item_t *ci)
 		if (strcasecmp ("Common", child->key) == 0) {
 			status = lustre_config_common (child, lustre_config_g);
 		} else if (strcasecmp ("Item", child->key) == 0) {
-			status = lustre_config_item (child, lustre_config_g);
+			status = lustre_config_item(child, lustre_config_g);
 		} else {
 			ERROR("Lustre: Ignoring unknown "
 			      "configuration option: \"%s\"",
