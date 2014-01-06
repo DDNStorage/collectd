@@ -32,7 +32,7 @@ struct lustre_configs *lustre_config_g = NULL;
 /* Compile the regular expression described by regex to preg */
 int lustre_compile_regex(regex_t *preg, const char *regex)
 {
-	int status = regcomp (preg, regex, REG_EXTENDED|REG_NEWLINE);
+	int status = regcomp(preg, regex, REG_EXTENDED|REG_NEWLINE);
 	if (status != 0) {
 		char error_message[MAX_NAME_LENGH];
 		regerror(status, preg, error_message, MAX_NAME_LENGH);
