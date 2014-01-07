@@ -165,6 +165,7 @@ struct lustre_definition {
 struct lustre_item_rule {
 	int			lir_field_index;
 	regex_t			lir_regex;
+	char			lir_string[MAX_NAME_LENGH + 1];
 	_Bool			lir_regex_inited;
 	struct list_head	lir_linkage;
 };
