@@ -96,6 +96,9 @@ static int lustre_item_match_one(struct lustre_field *fields,
 			    &item->li_rules,
 			    lir_linkage) {
 		if (!lustre_item_rule_match(fields, field_number, rule)) {
+			LINFO("string %s does not match pattern %s",
+			      fields[rule->lir_field_index].lf_string,
+			      rule->lir_string);
 			return 0;
 		}
 	}
@@ -112,9 +115,15 @@ static int lustre_item_match(struct lustre_field *fields,
 			    &type->lit_items,
 			    li_linkage) {
 		if (lustre_item_match_one(fields, field_number, item)) {
+			LINFO("values (1:%s) matches an item with type %s",
+			      fields[1].lf_string,
+			      type->lit_type_name);
 			return 1;
 		}
 	}
+	LINFO("values (1:%s) does not match any item with type %s",
+	      fields[1].lf_string,
+	      type->lit_type_name);
 	return 0;
 }
 
@@ -476,8 +485,9 @@ static int lustre_parse(struct lustre_item_type *type,
 			}
 		}
 
-		if (lustre_item_match(data->lid_fields, type->lit_field_number,
-				       type)) {
+		if (lustre_item_match(data->lid_fields,
+				      type->lit_field_number,
+				      type)) {
 			lustre_data_submit(type, path_head, data);
 		}
 		previous += fields[0].rm_eo;
@@ -491,20 +501,26 @@ out:
 #define START_FILE_SIZE (1048576)
 #define MAX_FILE_SIZE   (1048576 * 1024)
 
-static int lustre_read_file(const char *path, char **buf)
+static int lustre_read_file(const char *path, char **buf, ssize_t *data_size)
 {
 	int bufsize = START_FILE_SIZE;
 	char *filebuf;
+	char *pointer;
 	struct stat st;
 	int status;
 	int fd;
 	char *tmp;
+	ssize_t offset = 0;
+	ssize_t size;
+	ssize_t left_size = 0;
 
 	filebuf = malloc(bufsize);
 	if (filebuf == NULL) {
 		ERROR("jobstat: failed to allocate memory");
 		return -1;
 	}
+	pointer = filebuf; 
+	left_size = bufsize;
 
 	status = stat(path, &st);
 	if (status) {
@@ -520,27 +536,43 @@ static int lustre_read_file(const char *path, char **buf)
 	}
 
 read_again:
-	status = read(fd, filebuf, bufsize - 1);
-	if (status == bufsize - 1) {
-		if (bufsize > MAX_FILE_SIZE) {
-			ERROR("file is too big");
-			status = -1;
-			goto err;
+	size = read(fd, pointer, left_size - 1);
+	if (size < 0) {
+		ERROR("failed to read %s", path);
+		status = -1;
+		goto err;
+	} else if (size == 0) {
+		/* finished */
+		filebuf[offset] = '\0';
+	} else {
+		assert(size > 0);
+		assert(size <= left_size - 1);
+		offset += size;
+		if (size == left_size - 1) {
+			if (bufsize > MAX_FILE_SIZE) {
+				ERROR("file is too big");
+				status = -1;
+				goto err;
+			}
+			bufsize *= 2;
+			tmp = realloc(filebuf, bufsize);
+			if (tmp == NULL) {
+				ERROR("failed to allocate memory");
+				status = -1;
+				goto err;
+			}
+			filebuf = tmp;
 		}
-		bufsize *= 2;
-		tmp = realloc(filebuf, bufsize);
-		if (tmp == NULL) {
-			ERROR("failed to allocate memory");
-			status = -1;
-			goto err;
-		}
-		filebuf = tmp;
+		pointer = filebuf + offset;
+		left_size = bufsize - offset;
+		assert(offset < bufsize);
 		goto read_again;
 	}
-	filebuf[status] = '\0';
 
 	close(fd);
 	*buf = filebuf;
+	*data_size = offset;
+	LINFO("buff size %d, file size :%zd:%zd", bufsize, offset, strlen(filebuf));
 	return 0;
 err:
 	free(filebuf);
@@ -681,6 +713,7 @@ _lustre_entry_read(struct lustre_entry *entry,
 	char *filebuf;
 	struct lustre_entry *child;
 	struct lustre_item_type *type;
+	ssize_t size;
 
 	strcpy(path, pwd);
 	if (subpath[0] != '/' &&
@@ -699,7 +732,7 @@ _lustre_entry_read(struct lustre_entry *entry,
 	if (entry->le_mode == S_IFREG) {
 		assert(list_empty(&entry->le_active_children));
 		assert(list_empty(&entry->le_children));
-		status = lustre_read_file(path, &filebuf);
+		status = lustre_read_file(path, &filebuf, &size);
 		if (status) {
 			ERROR("unable to read file %s", path);
 			return status;
@@ -1059,6 +1092,13 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 				      child->key);
 				break;
 			}
+			if (strlen(value) > MAX_NAME_LENGH) {
+				ERROR("Rule: value \"%s\" is too long",
+				      value);
+				free(value);
+				break;
+			}
+			strcpy(rule->lir_string, value);
 			status = lustre_compile_regex(&rule->lir_regex,
 						      value);
 			free(value);
