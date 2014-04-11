@@ -946,7 +946,9 @@ out:
 	 */
 	xmlCleanupParser();
 	//lustre_entry_dump(definition->ld_root, 0);
-	if (status)
+	if (status) {
 		lustre_entry_free(definition->ld_root);
+		definition->ld_root = NULL;
+	}
 	return status;
 }
