@@ -83,7 +83,7 @@ struct lustre_field_type {
 struct lustre_field {
 	struct lustre_field_type	*lf_type;
 	char				 lf_string[MAX_JOBSTAT_FIELD_LENGTH];
-	derive_t			 lf_value;
+	uint64_t			 lf_value;
 };
 
 #define LUSTRE_ITEM_FLAG_NAME		0x00000001

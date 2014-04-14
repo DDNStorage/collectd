@@ -132,12 +132,23 @@ static void lustre_instance_submit(const char *host,
 				   const char *plugin_instance,
 				   const char *type,
 				   const char *type_instance,
-				   derive_t value)
+				   uint64_t value)
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
 
-	values[0].derive = value;
+	if (strcmp(type, "derive") == 0) {
+		values[0].derive = value;
+	} else if (strcmp(type, "gauge") == 0) {
+		values[0].gauge = value;
+	} else if (strcmp(type, "counter") == 0) {
+		values[0].counter = value;
+	} else if (strcmp(type, "absolute") == 0) {
+		values[0].absolute = value;
+	} else {
+		ERROR("unsupported type %s\n", type);
+		return;
+	}
 
 	vl.values = values;
 	vl.values_len = 1;
@@ -293,7 +304,7 @@ static int lustre_submit(struct lustre_submit *submit,
 			 struct lustre_field *fields,
 			 int content_field_number,
 			 int content_index,
-			 derive_t value)
+			 uint64_t value)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
