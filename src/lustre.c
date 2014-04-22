@@ -822,6 +822,7 @@ _lustre_entry_read(struct lustre_entry *entry,
 				ERROR("unable to parse file %s for type %s",
 				      path,
 				      type->lit_type_name);
+				free(filebuf);
 				return status;
 			}
 		}
@@ -834,7 +835,7 @@ _lustre_entry_read(struct lustre_entry *entry,
 				    le_active_linkage) {
 			status = lustre_entry_read(child, path, path_head);
 			if (status) {
-				return status;
+				WARNING("entry path: %s not found, continue", path);
 			}
 		}
 	}
