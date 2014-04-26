@@ -451,6 +451,16 @@ gmond_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(GANGLIA_LDFLAGS)
 gmond_la_LIBADD = $(GANGLIA_LIBS)
 endif
 
+if BUILD_PLUGIN_GANGLIA
+pkglib_LTLIBRARIES += ganglia.la
+ganglia_la_SOURCES = ganglia.c
+ganglia_la_CPPFLAGS = $(AM_CPPFLAGS) $(GANGLIA_CPPFLAGS)
+ganglia_la_LDFLAGS = -module -avoid-version $(GANGLIA_LDFLAGS)
+ganglia_la_LIBADD = $(GANGLIA_LIBS)
+collectd_LDADD += "-dlopen" ganglia.la
+collectd_DEPENDENCIES += ganglia.la
+endif
+
 if BUILD_PLUGIN_GPS
 pkglib_LTLIBRARIES += gps.la
 gps_la_SOURCES = gps.c
