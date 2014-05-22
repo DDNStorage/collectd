@@ -6,10 +6,6 @@
 #include <strings.h>
 #include <pthread.h>
 #include <ganglia.h>
-#include <confuse.h>
-#include <apr-1/apr.h>
-#include <apr-1/apr_strings.h>
-#include <apr-1/apr_pools.h>
 
 #define TMAX_DEFAULT	60
 #define DMAX_DEFAULT	0
