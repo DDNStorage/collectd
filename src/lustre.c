@@ -876,7 +876,7 @@ lustre_entry_read(struct lustre_entry *entry,
 		assert(entry->le_subpath_type == SUBPATH_REGULAR_EXPRESSION);
 		parent_dir = opendir(pwd);
 		if (parent_dir == NULL) {
-			INFO("unable to open proc direcotry: %s", pwd);
+			LINFO("unable to open proc directory: %s", pwd);
 			return -1;
 		}
 		while ((dp = readdir(parent_dir)) != NULL) {
@@ -1074,8 +1074,6 @@ static void lustre_config_dump(struct lustre_configs *conf)
 		ERROR("Lustre config: empty config");
 		return;
 	}
-
-	LINFO("Lustre config: debug %s", conf->lc_debug ? "true" : "false");
 }
 
 static int lustre_config_common(const oconfig_item_t *ci,
@@ -1101,8 +1099,6 @@ static int lustre_config_common(const oconfig_item_t *ci,
 			if (status) {
 				ERROR("Common: failed to init definition");
 			}
-		} else if (strcasecmp("Debug", child->key) == 0) {
-			cf_util_get_boolean(child, &conf->lc_debug);
 		} else {
       			ERROR("Common: The \"%s\" key is not allowed"
 			      "and will be ignored.", child->key);
@@ -1327,10 +1323,8 @@ static int lustre_config(oconfig_item_t *ci)
 		}
 	}
 
-	if (lustre_config_g->lc_debug) {
-		lustre_config_dump(lustre_config_g);
-		lustre_entry_dump_active(lustre_config_g->lc_definition.ld_root, 0);
-	}
+	lustre_config_dump(lustre_config_g);
+	lustre_entry_dump_active(lustre_config_g->lc_definition.ld_root, 0);
 
 out:
 	if (status != 0) {
