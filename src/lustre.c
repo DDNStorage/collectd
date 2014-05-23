@@ -876,7 +876,7 @@ lustre_entry_read(struct lustre_entry *entry,
 		assert(entry->le_subpath_type == SUBPATH_REGULAR_EXPRESSION);
 		parent_dir = opendir(pwd);
 		if (parent_dir == NULL) {
-			ERROR("unable to open proc direcotry: %s", pwd);
+			INFO("unable to open proc direcotry: %s", pwd);
 			return -1;
 		}
 		while ((dp = readdir(parent_dir)) != NULL) {
