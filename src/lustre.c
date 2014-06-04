@@ -776,6 +776,35 @@ lustre_entry_read(struct lustre_entry *entry,
 		  struct list_head *path_head);
 
 static int
+lustre_entry_read_directory(struct lustre_entry *entry,
+			    char *path,
+			    struct list_head *path_head)
+{
+	struct lustre_entry *child;
+	int status = 0;
+	struct stat st;
+
+	assert(list_empty(&entry->le_active_item_types));
+	assert(list_empty(&entry->le_item_types));
+
+	status = stat(path, &st);
+	if (status) {
+		INFO("failed to stat %s: %s", path, strerror(errno));
+		return 0;
+	}
+
+	list_for_each_entry(child,
+			    &entry->le_active_children,
+			    le_active_linkage) {
+		status = lustre_entry_read(child, path, path_head);
+		if (status) {
+			WARNING("entry path: %s not found, continue", path);
+		}
+	}
+	return 0;
+}
+
+static int
 _lustre_entry_read(struct lustre_entry *entry,
 		   char *pwd,
 		   char *subpath,
@@ -784,7 +813,6 @@ _lustre_entry_read(struct lustre_entry *entry,
 	char path[MAX_NAME_LENGH + 1];
 	int status = 0;
 	char *filebuf;
-	struct lustre_entry *child;
 	struct lustre_item_type *type;
 	ssize_t size;
 
@@ -828,16 +856,9 @@ _lustre_entry_read(struct lustre_entry *entry,
 		}
 		free(filebuf);
 	} else {
-		assert(list_empty(&entry->le_active_item_types));
-		assert(list_empty(&entry->le_item_types));
-		list_for_each_entry(child,
-				    &entry->le_active_children,
-				    le_active_linkage) {
-			status = lustre_entry_read(child, path, path_head);
-			if (status) {
-				WARNING("entry path: %s not found, continue", path);
-			}
-		}
+		lustre_entry_read_directory(entry,
+					    path,
+					    path_head);
 	}
 	return 0;
 }
