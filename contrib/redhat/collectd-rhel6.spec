@@ -1355,9 +1355,6 @@ rm -rf %{buildroot}
 %{__make} install DESTDIR=%{buildroot}
 %{__install} -Dp -m 0755 contrib/redhat/init.d-collectd %{buildroot}%{_initrddir}/collectd
 %{__install} -Dp -m0644 src/collectd.conf %{buildroot}%{_sysconfdir}/collectd.conf
-%{__install} -Dp -m0644 contrib/ddn/lustre-1.8_definition.xml %{buildroot}%{_sysconfdir}/lustre-1.8_definition.xml
-%{__install} -Dp -m0644 contrib/ddn/lustre-2.4_definition.xml %{buildroot}%{_sysconfdir}/lustre-2.4_definition.xml
-%{__install} -Dp -m0644 contrib/ddn/lustre-2.5_definition.xml %{buildroot}%{_sysconfdir}/lustre-2.5_definition.xml
 %{__install} -Dp -m0644 contrib/ddn/collectd.conf.mds %{buildroot}%{_sysconfdir}/collectd.conf.mds
 %{__install} -Dp -m0644 contrib/ddn/collectd.conf.oss %{buildroot}%{_sysconfdir}/collectd.conf.oss
 %{__install} -d %{buildroot}%{_sharedstatedir}/collectd/
@@ -1430,9 +1427,6 @@ fi
 %config(noreplace) %{_sysconfdir}/collectd.conf
 %{_sysconfdir}/collectd.conf.mds
 %{_sysconfdir}/collectd.conf.oss
-%{_sysconfdir}/lustre-1.8_definition.xml
-%{_sysconfdir}/lustre-2.4_definition.xml
-%{_sysconfdir}/lustre-2.5_definition.xml
 %{_initrddir}/collectd
 %{_sbindir}/collectd
 %{_bindir}/collectd-nagios
