@@ -1,6 +1,6 @@
 /**
- * collectd - src/lustre.c
- * Copyright (C) 2013  Li Xi
+ * collectd - src/lustre_config.h
+ * Copyright (C) 2014  Li Xi
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -19,11 +19,15 @@
  *   Li Xi <lixi at ddn.com>
  **/
 
-#ifndef LUSTRE_H
-#define LUSTRE_H
+#ifndef LUSTRE_CONFIG_H
+#define LUSTRE_CONFIG_H
 
 #include <regex.h>
+#include <stdint.h>
 #include "list.h"
+#include "liboconfig/oconfig.h"
+
+#define MAX_NAME_LENGH 1024
 
 #define MAX_JOBSTAT_FIELD_LENGTH 32
 #define MAX_SUBMIT_STRING_LENGTH 32
@@ -36,8 +40,6 @@ typedef enum {
 
 struct lustre_item_type;
 typedef int (*lustre_read_fn) (struct lustre_item_type *type);
-
-#define MAX_NAME_LENGH 1024
 
 #define LUSTRE_FIELD_FLAG_INDEX				0x00000001
 #define LUSTRE_FIELD_FLAG_NAME				0x00000002
@@ -116,6 +118,55 @@ struct lustre_item_type {
 	regex_t				 	  lit_context_regex;
 };
 
+struct lustre_item_rule {
+	int			 lir_field_index;
+	regex_t			 lir_regex;
+	char			 lir_string[MAX_NAME_LENGH + 1];
+	_Bool			 lir_regex_inited;
+	/* Linkage to item */
+	struct list_head	 lir_linkage;
+	/* Pointer to to item */
+	struct lustre_item	*lir_item;
+};
+
+struct lustre_item {
+	struct lustre_item_type *li_type;
+	/* Linkage to type */
+	struct list_head	 li_linkage;
+	struct list_head	 li_rules;
+};
+
+struct lustre_item_data {
+	int			 lid_filed_number;
+	struct lustre_field	*lid_fields;
+};
+
+struct lustre_subpath_field_type {
+	/* Linkage to list */
+	struct list_head	 lpft_linkage;
+	int			 lpft_index;
+	struct lustre_entry	*lpft_entry;
+	int			 lpft_flags;
+	char			 lpft_name[MAX_NAME_LENGH + 1];
+};
+
+
+#define LUSTRE_SUBPATH_FIELD_FLAG_INDEX 0x00000001
+#define LUSTRE_SUBPATH_FIELD_FLAG_NAME  0x00000002
+#define LUSTRE_SUBPATH_FIELD_FLAG_FIELD (LUSTRE_SUBPATH_FIELD_FLAG_INDEX |\
+					 LUSTRE_SUBPATH_FIELD_FLAG_NAME)
+
+struct lustre_subpath_field {
+	struct lustre_subpath_field_type	*lpf_type;
+	char					 lpf_value[MAX_NAME_LENGH + 1];
+};
+
+struct lustre_subpath_fields {
+	int				 lpfs_field_number;
+	struct lustre_subpath_field	*lpfs_fileds;
+	struct list_head		 lpfs_linkage;
+};
+
 #define LUSTRE_ENTRY_FLAG_SUBPATH	0x00000001
 #define LUSTRE_ENTRY_FLAG_MODE		0x00000002
 #define LUSTRE_ENTRY_FLAG_FILLED	(LUSTRE_ENTRY_FLAG_SUBPATH | \
@@ -163,61 +214,28 @@ struct lustre_definition {
 	_Bool			  ld_inited;
 	struct lustre_entry	 *ld_root;
 	char			 *ld_version;
-};
-
-struct lustre_item_rule {
-	int			lir_field_index;
-	regex_t			lir_regex;
-	char			lir_string[MAX_NAME_LENGH + 1];
-	_Bool			lir_regex_inited;
-	struct list_head	lir_linkage;
-};
-
-struct lustre_item {
-	struct lustre_item_type *li_type;
-	/* Linkage to type */
-	struct list_head	 li_linkage;
-	struct list_head	 li_rules;
+	char			 *ld_filename;
 };
 
 struct lustre_configs {
-	struct lustre_definition	 lc_definition;
-	regex_t				 lc_regex;
-	_Bool				 lc_debug;
+	struct lustre_definition lc_definition;
+	regex_t			 lc_regex;
+	_Bool			 lc_debug;
 };
+struct lustre_configs *lustre_config(oconfig_item_t *ci);
+int lustre_config_save(struct lustre_configs *conf,
+		       const char *config_file);
+void lustre_config_free(struct lustre_configs *conf);
+int lustre_compile_regex(regex_t *preg, const char *regex);
+void lustre_definition_fini(struct lustre_definition *definition);
+int lustre_item_match(struct lustre_field *fields,
+		      int field_number,
+		      struct lustre_item_type *type);
+struct lustre_item *lustre_item_alloc();
+void lustre_item_add(struct lustre_item *item);
+void lustre_item_free(struct lustre_item *item);
+void lustre_item_unlink(struct lustre_item *item);
 
-struct lustre_item_data {
-	int			 lid_filed_number;
-	struct lustre_field	*lid_fields;
-};
-
-struct lustre_subpath_field_type {
-	/* Linkage to list */
-	struct list_head	 lpft_linkage;
-	int			 lpft_index;
-	struct lustre_entry	*lpft_entry;
-	int			 lpft_flags;
-	char			 lpft_name[MAX_NAME_LENGH + 1];
-};
-
-
-#define LUSTRE_SUBPATH_FIELD_FLAG_INDEX 0x00000001
-#define LUSTRE_SUBPATH_FIELD_FLAG_NAME  0x00000002
-#define LUSTRE_SUBPATH_FIELD_FLAG_FIELD (LUSTRE_SUBPATH_FIELD_FLAG_INDEX |\
-					 LUSTRE_SUBPATH_FIELD_FLAG_NAME)
-
-struct lustre_subpath_field {
-	struct lustre_subpath_field_type	*lpf_type;
-	char					 lpf_value[MAX_NAME_LENGH + 1];
-};
-
-struct lustre_subpath_fields {
-	int				 lpfs_field_number;
-	struct lustre_subpath_field	*lpfs_fileds;
-	struct list_head		 lpfs_linkage;
-};
-
-extern struct lustre_configs *lustre_config_g;
 struct lustre_field_type *lustre_field_type_alloc(void);
 void lustre_field_type_free(struct lustre_field_type *field_type);
 int
@@ -225,14 +243,12 @@ lustre_field_type_add(struct lustre_item_type *type,
 		      struct lustre_field_type *field_type);
 void lustre_item_type_free(struct lustre_item_type *type);
 struct lustre_item_type *lustre_item_type_alloc(void);
-int lustre_compile_regex(regex_t *preg, const char *regex);
 
-#if 0
-#define LINFO(format, ...)                                                     \
-do {                                                                           \
-    INFO("%s:%d:%s(): "format, __FILE__, __LINE__, __FUNCTION__, ## __VA_ARGS__);  \
-} while (0)
-#else
-#define LINFO(...)   INFO(__VA_ARGS__)
-#endif
-#endif /* LUSTRE_H */
+void lustre_item_rule_free(struct lustre_item_rule *rule);
+void lustre_item_rule_unlink(struct lustre_item_rule *rule);
+void lustre_item_rule_add(struct lustre_item *item,
+			  struct lustre_item_rule *rule);
+void lustre_item_rule_replace(struct lustre_item *item,
+			      struct lustre_item_rule *old,
+			      struct lustre_item_rule *new);
+#endif /* LUSTRE_CONFIG_H */

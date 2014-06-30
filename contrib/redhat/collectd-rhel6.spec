@@ -1520,6 +1520,7 @@ fi
 %{_libdir}/%{name}/logfile.so
 %endif
 %if %{with_lustre}
+%{_bindir}/collectd-lustre
 %{_libdir}/%{name}/lustre.so
 %endif
 %if %{with_madwifi}
