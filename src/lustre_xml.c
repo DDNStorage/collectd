@@ -22,14 +22,13 @@
 #include <stdio.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
-#include "collectd.h"
-#include "common.h"
-#include "plugin.h"
-#include "list.h"
-#include "lustre.h"
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "list.h"
+#include "lustre_common.h"
+#include "lustre_config.h"
 
 static struct lustre_subpath_field_type *
 lustre_subpath_field_type_alloc(void)
@@ -54,7 +53,7 @@ lustre_subpath_field_type_add(struct lustre_entry *entry,
 			      struct lustre_subpath_field_type *field_type)
 {
 	if (field_type->lpft_index != entry->le_subpath_field_number + 1) {
-		ERROR("index number of field is false, expecting %d, got %d",
+		LERROR("index number of field is false, expecting %d, got %d",
 		      entry->le_subpath_field_number + 1,
 		      field_type->lpft_index);
 		return -1;
@@ -81,7 +80,7 @@ struct lustre_entry *lustre_entry_alloc(void)
 
 	entry = calloc(1, sizeof(struct lustre_entry));
 	if (entry == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return NULL;
 	}
 
@@ -176,7 +175,7 @@ static int string2mode(const char *string, mode_t *mode)
 	} else if (strcmp(string, LUSTRE_XML_FILE) == 0) {
 		*mode = S_IFREG;
 	} else {
-	ERROR("XML: unkown mode");
+		LERROR("XML: unkown mode");
 		return -1;
 	}
 	return 0;
@@ -189,7 +188,7 @@ static char *mode2string(mode_t mode)
 	} else if (mode == S_IFREG) {
 		return LUSTRE_XML_FILE;
 	} else {
-		ERROR("XML: unkown mode");
+		LERROR("XML: unkown mode");
 		return NULL;
 	}
 	return NULL;
@@ -202,7 +201,7 @@ static int lustre_field_string2type(char *string, value_type_t *type)
 	} else if (strcmp(string, LUSTRE_XML_STRING) == 0) {
 		*type = TYPE_STRING;
 	} else {
-		ERROR("XML: unkown type");
+		LERROR("XML: unkown type");
 		return -1;
 	}
 	return 0;
@@ -215,7 +214,7 @@ static const char *lustre_field_type2string(value_type_t type)
 	} else if (type == TYPE_NUMBER) {
 		return LUSTRE_XML_NUMBER;
 	} else {
-		ERROR("XML: unkown type");
+		LERROR("XML: unkown type");
 		return NULL;
 	}
 	return NULL;
@@ -336,7 +335,7 @@ lustre_option_name_extract(char *name,
 		*flag = LUSTRE_FIELD_FLAG_OPTION_TYPE_INSTANCE;
 		*option = &submit->ls_type_instance;
 	} else {
-		ERROR("XML: unkown type");
+		LERROR("XML: unkown type");
 		return -1;
 	}
 	return 0;
@@ -373,13 +372,13 @@ lustre_xml_option_parse(struct lustre_field_type *field, xmlNode *node)
 							    &flag,
 							    &option);
 			if (status) {
-				ERROR("XML: unkown option");
+				LERROR("XML: unkown option");
 				break;
 			}
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_STRING) == 0) {
 			if (inited != 0) {
-				ERROR("XML: more than one type");
+				LERROR("XML: more than one type");
 				status = -1;
 				break;
 			}
@@ -388,7 +387,7 @@ lustre_xml_option_parse(struct lustre_field_type *field, xmlNode *node)
 			xmlFree(value);
 			inited = 1;
 		} else {
-			ERROR("XML: option has a unknown child %s", tmp->name);
+			LERROR("XML: option has a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
@@ -399,12 +398,12 @@ lustre_xml_option_parse(struct lustre_field_type *field, xmlNode *node)
 	}
 
 	if (flag == 0 || option == NULL) {
-		ERROR("XML: option has no name");
+		LERROR("XML: option has no name");
 		return -1;
 	}
 
 	if (inited == 0) {
-		ERROR("XML: option has no value");
+		LERROR("XML: option has no value");
 		return -1;
 	}
 
@@ -423,7 +422,7 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 
 	field = lustre_field_type_alloc();
 	if (field == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return -1;
 	}
 
@@ -437,7 +436,7 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 			field->lft_index = strtoull(value, NULL, 10);
 			if (field->lft_index != item->lit_field_number + 1) {
 				status = -1;
-				ERROR("XML: index of field is false, "
+				LERROR("XML: index of field is false, "
 				      "expecting %d, got %d",
 				      item->lit_field_number + 1,
 				      field->lft_index);
@@ -450,7 +449,7 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;
-				ERROR("XML: name %s is too long", value);
+				LERROR("XML: name %s is too long", value);
 				xmlFree(value);
 				break;
 			}
@@ -461,7 +460,7 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			status = lustre_field_string2type(value, &field->lft_type);
 			if (status) {
-				ERROR("XML: type %s is illegal", value);
+				LERROR("XML: type %s is illegal", value);
 				xmlFree(value);
 				break;
 			}
@@ -470,11 +469,11 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_OPTION) == 0) {
 			status = lustre_xml_option_parse(field, tmp->children);
 			if (status) {
-				ERROR("XML: failed to compile field");
+				LERROR("XML: failed to compile field");
 				break;
 			}
 		} else {
-			ERROR("XML: field have a unknown child %s", tmp->name);
+			LERROR("XML: field have a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
@@ -482,7 +481,7 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 
 	if ((field->lft_flags & LUSTRE_FIELD_FLAG_FILLED)
 	    != LUSTRE_FIELD_FLAG_FILLED) {
-		ERROR("XML: some fields of item is missing, flag = %d",
+		LERROR("XML: some fields of item is missing, flag = %d",
 		      field->lft_flags);
 		status = -1;
 	}
@@ -506,7 +505,7 @@ static int lustre_item_type_build(struct lustre_item_type *item)
 	item->lit_field_array = calloc(item->lit_field_number + 1,
 				       sizeof(struct lustre_field_type *));
 	if (item->lit_field_array == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return -1;
 	}
 
@@ -529,7 +528,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 
 	item = lustre_item_type_alloc();
 	if (item == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return -1;
 	}
 
@@ -542,7 +541,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;
-				ERROR("XML: name %s is too long", value);
+				LERROR("XML: name %s is too long", value);
 				xmlFree(value);
 				break;
 			}
@@ -553,7 +552,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;
-				ERROR("XML: pattern %s is too long", value);
+				LERROR("XML: pattern %s is too long", value);
 				xmlFree(value);
 				break;
 			}
@@ -562,7 +561,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 			status = lustre_compile_regex(&item->lit_regex,
 						      item->lit_pattern);
 			if (status) {
-				ERROR("XML: failed to compile pattern %s",
+				LERROR("XML: failed to compile pattern %s",
 					item->lit_pattern);
 				break;
 			}
@@ -570,7 +569,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_FIELD) == 0) {
 			status = lustre_xml_field_parse(item, tmp->children);
 			if (status) {
-				ERROR("XML: failed to compile field");
+				LERROR("XML: failed to compile field");
 				break;
 			}
 			item->lit_flags |= LUSTRE_ITEM_FLAG_FIELD;
@@ -578,7 +577,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;
-				ERROR("XML: context %s is too long", value);
+				LERROR("XML: context %s is too long", value);
 				xmlFree(value);
 				break;
 			}
@@ -587,13 +586,13 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 			status = lustre_compile_regex(&item->lit_context_regex,
 						      item->lit_context);
 			if (status) {
-				ERROR("XML: failed to compile context %s",
+				LERROR("XML: failed to compile context %s",
 					item->lit_context);
 				break;
 			}
 			item->lit_flags |= LUSTRE_ITEM_FLAG_CONTEXT;
 		} else {
-			ERROR("XML: entry have a unknown child %s", tmp->name);
+			LERROR("XML: entry have a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
@@ -601,13 +600,13 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 
 	if ((item->lit_flags & LUSTRE_ITEM_FLAG_FILLED)
 	    != LUSTRE_ITEM_FLAG_FILLED) {
-		ERROR("XML: some fields of item is missing, falg = %d",
+		LERROR("XML: some fields of item is missing, falg = %d",
 		      item->lit_flags);
 		status = -1;
 	}
 
 	if (item->lit_field_number != item->lit_regex.re_nsub) {
-		ERROR("XML: field number of item is false");
+		LERROR("XML: field number of item is false");
 		status = -1;
 	}
 
@@ -635,7 +634,7 @@ lustre_xml_subpath_field_parse(struct lustre_entry *entry, xmlNode *node)
 
 	field = lustre_subpath_field_type_alloc();
 	if (field == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return -1;
 	}
 
@@ -649,7 +648,7 @@ lustre_xml_subpath_field_parse(struct lustre_entry *entry, xmlNode *node)
 			field->lpft_index = strtoull(value, NULL, 10);
 			if (field->lpft_index != entry->le_subpath_field_number + 1) {
 				status = -1;
-				ERROR("XML: index %s of field is false", value);
+				LERROR("XML: index %s of field is false", value);
 				xmlFree(value);
 				break;
 			}
@@ -659,7 +658,7 @@ lustre_xml_subpath_field_parse(struct lustre_entry *entry, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;
-				ERROR("XML: name %s is too long", value);
+				LERROR("XML: name %s is too long", value);
 				xmlFree(value);
 				break;
 			}
@@ -667,14 +666,14 @@ lustre_xml_subpath_field_parse(struct lustre_entry *entry, xmlNode *node)
 			field->lpft_flags |= LUSTRE_SUBPATH_FIELD_FLAG_NAME;
 			xmlFree(value);
 		} else {
-			ERROR("XML: field have a unknown child %s", tmp->name);
+			LERROR("XML: field have a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
 	}
 
 	if (field->lpft_flags != LUSTRE_SUBPATH_FIELD_FLAG_FIELD) {
-		ERROR("XML: some fields of item is missing");
+		LERROR("XML: some fields of item is missing");
 		status = -1;
 	}
 
@@ -710,7 +709,7 @@ lustre_xml_subpath_parse(struct lustre_entry *entry, xmlNode *node)
 			} else {
 				status = -1;
 				xmlFree(value);
-				ERROR("XML: subpath_type %s is unknown\n", value);
+				LERROR("XML: subpath_type %s is unknown\n", value);
 				break;
 			}
 			xmlFree(value);
@@ -718,7 +717,7 @@ lustre_xml_subpath_parse(struct lustre_entry *entry, xmlNode *node)
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;
-				ERROR("XML: path %s is too long\n", value);
+				LERROR("XML: path %s is too long\n", value);
 				xmlFree(value);
 				break;
 			}
@@ -731,7 +730,7 @@ lustre_xml_subpath_parse(struct lustre_entry *entry, xmlNode *node)
 				break;
 			}
 		} else {
-			ERROR("XML: subpath have a unknown child %s", tmp->name);
+			LERROR("XML: subpath have a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
@@ -742,7 +741,7 @@ lustre_xml_subpath_parse(struct lustre_entry *entry, xmlNode *node)
 	}
 
 	if (!inited) {
-		ERROR("XML: subpath does not have path");
+		LERROR("XML: subpath does not have path");
 		return -1;
 	}
 
@@ -750,16 +749,16 @@ lustre_xml_subpath_parse(struct lustre_entry *entry, xmlNode *node)
 		status = lustre_compile_regex (&entry->le_subpath_regex,
 					       entry->le_subpath);
 		if (status) {
-			ERROR("XML: failed to compile regular expression %s",
+			LERROR("XML: failed to compile regular expression %s",
 				entry->le_subpath);
 		} else {
 			if (entry->le_subpath_regex.re_nsub != entry->le_subpath_field_number) {
-				ERROR("XML: subpath field number is error");
+				LERROR("XML: subpath field number is error");
 				status = -1;
 			}
 		}
 	} else if (entry->le_subpath_type != SUBPATH_CONSTANT) {
-		ERROR("XML: subpath does not have subpath_type");
+		LERROR("XML: subpath does not have subpath_type");
 		return -1;
 	}
 	return status;
@@ -775,7 +774,7 @@ lustre_xml_entry_parse(struct lustre_entry *parent, xmlNode *node)
 
 	child = lustre_entry_alloc();
 	if (child == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return -1;
 	}
 
@@ -811,7 +810,7 @@ lustre_xml_entry_parse(struct lustre_entry *parent, xmlNode *node)
 				break;
 			}
 		} else {
-			ERROR("XML: entry have a unknown child %s", tmp->name);
+			LERROR("XML: entry have a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
@@ -819,17 +818,17 @@ lustre_xml_entry_parse(struct lustre_entry *parent, xmlNode *node)
 
 	if ((child->le_flags & LUSTRE_ENTRY_FLAG_FILLED)
 	    != LUSTRE_ENTRY_FLAG_FILLED) {
-		ERROR("XML: some fields of entry is missing");
+		LERROR("XML: some fields of entry is missing");
 		status = -1;
 	}
 
 	if (child->le_mode == S_IFREG && !list_empty(&child->le_children)) {
-		ERROR("XML: file entry should not have children");
+		LERROR("XML: file entry should not have children");
 		status = -1;
 	}
 
 	if (child->le_mode == S_IFDIR && !list_empty(&child->le_item_types)) {
-		ERROR("XML: directory entry should not have items");
+		LERROR("XML: directory entry should not have items");
 		status = -1;
 	}
 
@@ -859,7 +858,7 @@ lustre_xml_definition_fill(struct lustre_entry *root_entry, xmlNode *node)
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_ENTRY) == 0) {
 			lustre_xml_entry_parse(root_entry, tmp->children);
 		} else {
-			ERROR("XML: definition have a unknown child %s", tmp->name);
+			LERROR("XML: definition have a unknown child %s", tmp->name);
 			status = -1;
 			break;
 		}
@@ -873,24 +872,24 @@ lustre_xml_definition_get(struct lustre_entry *root_entry, xmlNode *root)
 	int status = 0;
 
 	if (root->next != NULL) {
-		ERROR("XML: more than one definition");
+		LERROR("XML: more than one definition");
 		return -1;
 	}
 
 	if (root->type != XML_ELEMENT_NODE) {
-		ERROR("XML: root is not a element");
+		LERROR("XML: root is not a element");
 		return -1;
 	}
 
 	if (strcmp((char *)root->name, LUSTRE_XML_DEFINITION)) {
-		ERROR("XML: root element is not a %s", LUSTRE_XML_DEFINITION);
+		LERROR("XML: root element is not a %s", LUSTRE_XML_DEFINITION);
 		return -1;
 	}
 
 	//luster_entry_add(parent);
 	status = lustre_xml_definition_fill(root_entry, root->children);
 	if (status) {
-		ERROR("XML: failed to fill definition");
+		LERROR("XML: failed to fill definition");
 	}
 	return status;
 }
@@ -904,7 +903,7 @@ lustre_xml_parse(struct lustre_definition *definition, const char *xml_file)
 
 	definition->ld_root = lustre_entry_alloc();
 	if (definition->ld_root == NULL) {
-		ERROR("XML: not enough memory");
+		LERROR("XML: not enough memory");
 		return -1;
 	}
 	definition->ld_root->le_subpath[0] = '/';
@@ -923,7 +922,7 @@ lustre_xml_parse(struct lustre_definition *definition, const char *xml_file)
 	doc = xmlReadFile(xml_file, NULL, 0);
 
 	if (doc == NULL) {
-		ERROR("XML: failed to read %s", xml_file);
+		LERROR("XML: failed to read %s", xml_file);
 		status = -1;
 		goto out;
 	}
@@ -933,7 +932,7 @@ lustre_xml_parse(struct lustre_definition *definition, const char *xml_file)
 
 	status = lustre_xml_definition_get(definition->ld_root, root_element);
 	if (status) {
-		ERROR("XML: failed to get definition from %s", xml_file);
+		LERROR("XML: failed to get definition from %s", xml_file);
 	}
 
 	/*free the document */
