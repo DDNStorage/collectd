@@ -131,6 +131,7 @@ struct lustre_item_rule {
 
 struct lustre_item {
 	struct lustre_item_type *li_type;
+	int query_interval;
 	/* Linkage to type */
 	struct list_head	 li_linkage;
 	struct list_head	 li_rules;
@@ -251,4 +252,5 @@ void lustre_item_rule_add(struct lustre_item *item,
 void lustre_item_rule_replace(struct lustre_item *item,
 			      struct lustre_item_rule *old,
 			      struct lustre_item_rule *new);
+void lustre_query_times_inc();
 #endif /* LUSTRE_CONFIG_H */
