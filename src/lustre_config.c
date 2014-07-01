@@ -26,12 +26,21 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <inttypes.h>
 #include <fcntl.h>
+#include <errno.h>
 #include "lustre_common.h"
 #include "lustre_config.h"
 #include "lustre_xml.h"
 
+uint64_t lustre_query_times = 0;
 /* Compile the regular expression described by regex to preg */
+
+void lustre_query_times_inc()
+{
+	lustre_query_times++;
+}
+
 int lustre_compile_regex(regex_t *preg, const char *regex)
 {
 	int status = regcomp(preg, regex, REG_EXTENDED|REG_NEWLINE);
@@ -222,6 +231,15 @@ static int lustre_item_match_one(struct lustre_field *fields,
 				 struct lustre_item *item)
 {
 	struct lustre_item_rule *rule;
+
+	if ((lustre_query_times % item->query_interval) != 0) {
+		LINFO("%s lustre query times: %"PRIu64" interval: %d",
+				item->li_type->lit_type_name, 
+				lustre_query_times, 
+				item->query_interval);
+		return 0;
+	}
+
 	list_for_each_entry(rule,
 			    &item->li_rules,
 			    lir_linkage) {
@@ -329,6 +347,23 @@ static int lustre_config_get_string (const oconfig_item_t *ci, char **ret_string
 	return 0;
 }
 
+static int lustre_config_get_int (const oconfig_item_t *ci, int *ret_value) /* {{{ */
+{
+	if ((ci == NULL) || (ret_value == NULL))
+		return EINVAL;
+
+	if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_NUMBER))
+	{
+		LERROR ("cf_util_get_int: The %s option requires "
+				"exactly one numeric argument.", ci->key);
+		return -1;
+	}
+
+	*ret_value = (int) ci->values[0].value.number;
+
+	return 0;
+}
+
 static int lustre_config_common(const oconfig_item_t *ci,
 				struct lustre_configs *conf)
 {
@@ -353,9 +388,9 @@ static int lustre_config_common(const oconfig_item_t *ci,
 				LERROR("Common: failed to init definition");
 			}
 		} else {
-      			LERROR("Common: The \"%s\" key is not allowed"
-			      "and will be ignored.", child->key);
-          	}
+			LERROR("Common: The \"%s\" key is not allowed"
+					"and will be ignored.", child->key);
+		}
 		if (status != 0)
 			break;
 	}
@@ -364,7 +399,7 @@ static int lustre_config_common(const oconfig_item_t *ci,
 }
 
 static int lustre_config_item_rule(const oconfig_item_t *ci,
-				   struct lustre_item *item)
+				struct lustre_item *item)
 {
 	int i, j;
 	int status = 0;
@@ -392,7 +427,7 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 			status = lustre_config_get_string(child, &value);
 			if (status) {
 				LERROR("Rule: failed to get value for \"%s\"",
-				       child->key);
+						child->key);
 				break;
 			}
 			found = 0;
@@ -478,6 +513,7 @@ struct lustre_item *lustre_item_alloc()
 		return NULL;
 	}
 	INIT_LIST_HEAD(&item->li_rules);
+	item->query_interval = 1;
 	return item;
 }
 
@@ -541,6 +577,19 @@ static int lustre_config_item(const oconfig_item_t *ci,
 				LERROR("Item: failed to parse rule");
 				break;
 			}
+		} else if (strcasecmp("Query_interval", child->key) == 0) {
+			status = lustre_config_get_int (child, &item->query_interval);
+			if (status) {
+				LERROR("Item: failed to get value for \"%s\"",
+				       child->key);
+				break;
+			}
+			if (item->query_interval <= 0) { 
+				status = -EINVAL;
+				LERROR("Item: query_interval must > 0, now is: %d",
+						item->query_interval);
+				break;
+			}
 		} else {
       			LERROR("Item: The \"%s\" key is not allowed inside "
           		      "<Rule /> blocks and will be ignored.",
@@ -594,7 +643,7 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci)
 			status = lustre_config_item(child, config);
 		} else {
 			LERROR("Lustre: Ignoring unknown "
-			       "configuration option: \"%s\"\n",
+					"configuration option: \"%s\"\n",
 			      child->key);
 		}
 		if (status) {

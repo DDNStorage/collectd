@@ -844,6 +844,7 @@ static int lustre_read(void)
 	if (!lustre_config_g->lc_definition.ld_root->le_active)
 		return 0;
 
+	lustre_query_times_inc();
 	INIT_LIST_HEAD(&path_head);
 	return lustre_entry_read(lustre_config_g->lc_definition.ld_root, "/", &path_head);
 }
