@@ -86,6 +86,7 @@ struct lustre_field {
 	struct lustre_field_type	*lf_type;
 	char				 lf_string[MAX_JOBSTAT_FIELD_LENGTH];
 	uint64_t			 lf_value;
+	int				 lf_allowed;
 };
 
 #define LUSTRE_ITEM_FLAG_NAME		0x00000001
@@ -129,12 +130,23 @@ struct lustre_item_rule {
 	struct lustre_item	*lir_item;
 };
 
+struct lustre_item_filter {
+	int			 lif_field_index;
+	char			 lif_string[MAX_NAME_LENGH + 1];
+	/* Linkage to item */
+	struct list_head	 lif_linkage;
+	/* Pointer to to item */
+	struct lustre_item	*lif_item;
+
+};
+
 struct lustre_item {
 	struct lustre_item_type *li_type;
 	int query_interval;
 	/* Linkage to type */
 	struct list_head	 li_linkage;
 	struct list_head	 li_rules;
+	struct list_head	 li_filters;
 };
 
 struct lustre_item_data {

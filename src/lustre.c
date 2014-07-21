@@ -274,6 +274,10 @@ static int lustre_data_submit(struct lustre_item_type *type,
 	int i;
 
 	for (i = 1; i <= type->lit_field_number; i++) {
+		if (data->lid_fields[i].lf_allowed == 0) {
+			continue;
+		}
+
 		if (type->lit_field_array[i]->lft_type == TYPE_STRING) {
 		} else if (type->lit_field_array[i]->lft_type == TYPE_NUMBER) {
 			lustre_submit(&type->lit_field_array[i]->lft_submit,

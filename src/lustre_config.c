@@ -52,6 +52,13 @@ int lustre_compile_regex(regex_t *preg, const char *regex)
 	return 0;
 }
 
+void lustre_item_filter_add(struct lustre_item *item,
+			  struct lustre_item_filter *filter)
+{
+	list_add_tail(&filter->lif_linkage, &item->li_filters);
+	filter->lif_item = item;
+}
+
 void lustre_item_rule_free(struct lustre_item_rule *rule)
 {
 	if (rule->lir_regex_inited)
@@ -80,6 +87,11 @@ void lustre_item_rule_unlink(struct lustre_item_rule *rule)
 	list_del_init(&rule->lir_linkage);
 }
 
+void lustre_item_filter_unlink(struct lustre_item_filter *filter)
+{
+	list_del_init(&filter->lif_linkage);
+}
+
 void lustre_item_unlink(struct lustre_item *item)
 {
 	list_del_init(&item->li_linkage);
@@ -89,6 +101,9 @@ void lustre_item_free(struct lustre_item *item)
 {
 	struct lustre_item_rule *rule;
 	struct lustre_item_rule *n;
+	struct lustre_item_filter *filter;
+	struct lustre_item_filter *tmp;
+
 	list_for_each_entry_safe(rule,
 				 n,
 	                         &item->li_rules,
@@ -96,6 +111,15 @@ void lustre_item_free(struct lustre_item *item)
 		lustre_item_rule_unlink(rule);
 		lustre_item_rule_free(rule);
 	}
+
+	list_for_each_entry_safe(filter,
+				 tmp,
+				 &item->li_filters,
+				 lif_linkage) {
+		lustre_item_filter_unlink(filter);
+		free(filter);
+	}
+
 	free(item);
 }
 
@@ -250,7 +274,42 @@ static int lustre_item_match_one(struct lustre_field *fields,
 			return 0;
 		}
 	}
+
 	return 1;
+}
+
+static int lustre_item_field_allowed(int field_idx, struct lustre_item *item)
+{
+	struct lustre_item_filter *filter;
+
+	list_for_each_entry(filter, &item->li_filters, lif_linkage) {
+		if (field_idx == filter->lif_field_index) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static int lustre_item_filter_match(struct lustre_field *fields,
+			      int field_number,
+			      struct lustre_item *item)
+{
+	int i = 0, allowed = 0;
+
+	for (i = 1;i <= field_number;i++) {
+		if (fields[i].lf_allowed) {
+			allowed++;
+			continue;
+		}
+
+		fields[i].lf_allowed = lustre_item_field_allowed(i, item);
+		if (fields[i].lf_allowed) {
+			allowed++;
+		}
+	}
+
+	return allowed;
 }
 
 int lustre_item_match(struct lustre_field *fields,
@@ -258,6 +317,7 @@ int lustre_item_match(struct lustre_field *fields,
 		      struct lustre_item_type *type)
 {
 	struct lustre_item *item;
+	int match = 0, res = 0;
 
 	list_for_each_entry(item,
 			    &type->lit_items,
@@ -266,13 +326,19 @@ int lustre_item_match(struct lustre_field *fields,
 			LINFO("values (1:%s) matches an item with type %s",
 			      fields[1].lf_string,
 			      type->lit_type_name);
-			return 1;
+			res = lustre_item_filter_match(fields, field_number, item);
+			if (res) {
+				match = res;
+			}
 		}
 	}
-	LINFO("values (1:%s) does not match any item with type %s",
-	      fields[1].lf_string,
-	      type->lit_type_name);
-	return 0;
+
+	if (match == 0) {
+		LINFO("values (1:%s) does not match any item with type %s",
+			fields[1].lf_string,
+			type->lit_type_name);
+	}
+	return match;
 }
 
 void lustre_definition_fini(struct lustre_definition *definition)
@@ -488,6 +554,71 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 	return (status);
 }
 
+static int lustre_config_item_filter(const oconfig_item_t *ci,
+				struct lustre_item *item)
+{
+	struct lustre_item_filter *filter = NULL;
+	struct lustre_item_type	*type = NULL;
+	char	*value = NULL;
+	int 	i = 0, status = 0;
+	int 	found = 0, j = 0;
+
+	type = item->li_type;
+	if (type == NULL) {
+		LERROR("Filter: type is not inited");
+		return -EINVAL;
+	}
+
+	for (i = 0;i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+		if (strcasecmp("Field", child->key) == 0) {
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Filter: failed to get value for \"%s\"",
+				child->key);
+				break;
+			}
+
+			filter = calloc(1, sizeof(struct lustre_item_filter));
+			if (filter == NULL) {
+				LERROR("Filter: not enough memory");
+				status = -ENOMEM;
+				free(value);
+				break;
+			}
+			INIT_LIST_HEAD(&filter->lif_linkage);
+
+			found = 0;
+			for (j = 1; j <= type->lit_field_number; j++) {
+				if (strcmp(value, type->lit_field_array[j]->lft_name) == 0) {
+					found = 1;
+					filter->lif_field_index = j;
+					break;
+				}
+			}
+			if (!found) {
+				LERROR("Filter: failed to find field of \"%s\"",
+				      value);
+				free(filter);
+				free(value);
+				status = -EINVAL;
+				break;
+			}
+
+			strcpy(filter->lif_string, value);
+			lustre_item_filter_add(item, filter);
+			free(value);
+		} else {
+			LERROR("Item: The \"%s\" key is not allowed inside "
+				"<Filter /> blocks and will be ignored.",
+				child->key);
+		}
+	}
+
+	return status;
+}
+
 static int lustre_entry_activate(struct lustre_entry *entry)
 {
 	struct lustre_entry *parent;
@@ -516,6 +647,7 @@ struct lustre_item *lustre_item_alloc()
 		return NULL;
 	}
 	INIT_LIST_HEAD(&item->li_rules);
+	INIT_LIST_HEAD(&item->li_filters);
 	item->query_interval = 1;
 	return item;
 }
@@ -592,6 +724,13 @@ static int lustre_config_item(const oconfig_item_t *ci,
 				status = -EINVAL;
 				LERROR("Item: query_interval must > 0, now is: %d",
 						item->query_interval);
+				break;
+			}
+		} else if (strcasecmp("Filter", child->key) == 0) {
+			status = lustre_config_item_filter (child, item);
+			if (status) {
+				LERROR("Item: failed to get value for \"%s\"",
+				       child->key);
 				break;
 			}
 		} else {
