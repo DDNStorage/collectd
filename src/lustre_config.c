@@ -441,6 +441,8 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 			if (!found) {
 				LERROR("Rule: failed to get find rule of \"%s\"",
 				      value);
+				status = -EINVAL;
+				free(value);
 				break;
 			}
 			free(value);
@@ -455,6 +457,7 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 			if (strlen(value) > MAX_NAME_LENGH) {
 				LERROR("Rule: value \"%s\" is too long",
 				      value);
+				status = -EINVAL;
 				free(value);
 				break;
 			}
@@ -568,6 +571,7 @@ static int lustre_config_item(const oconfig_item_t *ci,
 				LERROR("Item: failed to get type for \"%s\"",
 				       value);
 				status = -1;
+				free(value);
 				break;
 			}
 			free(value);
