@@ -1412,6 +1412,16 @@ xmms_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 xmms_la_LIBADD = $(BUILD_WITH_LIBXMMS_LIBS)
 endif
 
+if BUILD_PLUGIN_ZABBIX
+pkglib_LTLIBRARIES += zabbix.la
+zabbix_la_SOURCES = zabbix.c \
+                         zbxjson.c zbxjson.h
+zabbix_la_LDFLAGS = -module -avoid-version
+zabbix_la_LIBADD =
+collectd_LDADD += "-dlopen" zabbix.la
+collectd_DEPENDENCIES += zabbix.la
+endif
+
 if BUILD_PLUGIN_ZFS_ARC
 pkglib_LTLIBRARIES += zfs_arc.la
 zfs_arc_la_SOURCES = zfs_arc.c

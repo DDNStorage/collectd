@@ -90,6 +90,7 @@
 %define with_wireless 0%{!?_without_wireless:1}
 %define with_write_graphite 0%{!?_without_write_graphite:1}
 %define with_write_http 0%{!?_without_write_http:1}
+%define with_zabbix 0%{!?_without_zabbix:1}
 
 # disabled plugins
 %define with_apple_sensors 0%{!?_without_apple_sensors:0}
@@ -549,6 +550,16 @@ Requires:	%{name}%{?_isa} = %{version}-%{release}
 BuildRequires:	credis-devel
 %description write_redis
 The Write Redis plugin stores values in Redis, a “data structures server”.
+%endif
+
+%if %{with_zabbix}
+%package zabbix
+Summary:	Zabbix plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+BuildRequires:	ganglia-devel
+%description zabbix
+The zabbix plugin send key and value to zabbix server
 %endif
 
 %package collection3
@@ -1227,6 +1238,12 @@ Development files for libcollectdclient
 %define _with_xmms --disable-xmms
 %endif
 
+%if %{with_zabbix}
+%define _with_zabbix --enable-zabbix
+%else
+%define _with_zabbix --disable-zabbix
+%endif
+
 %if %{with_zfs_arc}
 %define _with_zfs_arc --enable-zfs_arc
 %else
@@ -1361,7 +1378,8 @@ Development files for libcollectdclient
 	%{?_with_vserver} \
 	%{?_with_wireless}\
 	%{?_with_write_graphite} \
-	%{?_with_write_http}
+	%{?_with_write_http} \
+	%{?_with_zabbix}
 
 
 %{__make} %{?_smp_mflags}
@@ -1877,6 +1895,11 @@ fi
 %if %{with_write_redis}
 %files write_redis
 %{_libdir}/%{name}/write_redis.so
+%endif
+
+%if %{with_zabbix}
+%files zabbix
+%{_libdir}/%{name}/zabbix.so
 %endif
 
 %files collection3
