@@ -117,6 +117,22 @@ lustre_field_find(struct lustre_field *fields,
 	return NULL;
 }
 
+static int lustre_key_field_get(char *field, size_t size, const char *name)
+{
+	if (strcmp(name, "hostname") == 0) {
+		if (strlen(hostname_g) >= size) {
+			strncpy(field, hostname_g, size - 1);
+			field[size - 1] = '\0';
+			WARNING("hostname: %s is too long, "
+				"truncate it to: \"%s\"", hostname_g, field);
+		} else {
+			strncpy(field, hostname_g, size - 1);
+		}
+	}
+
+	return 0;
+}
+
 static int lustre_submit_option_get(struct lustre_submit_option *option,
 				    struct list_head *path_head,
 				    struct lustre_field_type **field_types,
@@ -135,7 +151,8 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	char name[MAX_NAME_LENGH + 1];
 	struct lustre_subpath_field *subpath_field;
 	struct lustre_field *content_field;
-	const char *pattern = "\\$\\{(subpath|content):(.+)\\}";
+	char key_field[MAX_SUBMIT_STRING_LENGTH];
+	const char *pattern = "\\$\\{(subpath|content|key):(.+)\\}";
 	static regex_t regex;
 	static int regex_inited;
 	int i;
@@ -208,6 +225,17 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				max_size);
 			value_pointer += strlen(content_field->lf_string);
 			max_size -= strlen(content_field->lf_string);
+		} else if (strcmp(type, "key") == 0) {
+			status = lustre_key_field_get(key_field,
+						      sizeof(key_field),
+						      name);
+			if (status) {
+				ERROR("failed to get field of key \"%s\"",
+				      name);
+				break;
+			}
+			strncpy(value_pointer, key_field, max_size);
+			value_pointer += strlen(key_field);
 		}
 		pointer += matched_fields[0].rm_eo;
 	}
