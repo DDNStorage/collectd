@@ -531,6 +531,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 		LERROR("XML: not enough memory");
 		return -1;
 	}
+	item->lit_definition = entry->le_definition;
 
 	for (tmp = node; tmp; tmp = tmp->next) {
 		if (tmp->type != XML_ELEMENT_NODE) {
@@ -777,6 +778,7 @@ lustre_xml_entry_parse(struct lustre_entry *parent, xmlNode *node)
 		LERROR("XML: not enough memory");
 		return -1;
 	}
+	child->le_definition = parent->le_definition;
 
 	for (tmp = node; tmp; tmp = tmp->next) {
 		if (tmp->type != XML_ELEMENT_NODE) {
@@ -906,6 +908,7 @@ lustre_xml_parse(struct lustre_definition *definition, const char *xml_file)
 		LERROR("XML: not enough memory");
 		return -1;
 	}
+	definition->ld_root->le_definition = definition;
 	definition->ld_root->le_subpath[0] = '/';
 	definition->ld_root->le_subpath[1] = '\0';
 	definition->ld_root->le_mode = S_IFDIR;
