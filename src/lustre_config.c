@@ -33,14 +33,6 @@
 #include "lustre_config.h"
 #include "lustre_xml.h"
 
-uint64_t lustre_query_times = 0;
-/* Compile the regular expression described by regex to preg */
-
-void lustre_query_times_inc()
-{
-	lustre_query_times++;
-}
-
 int lustre_compile_regex(regex_t *preg, const char *regex)
 {
 	int status = regcomp(preg, regex, REG_EXTENDED|REG_NEWLINE);
@@ -256,11 +248,12 @@ static int lustre_item_match_one(struct lustre_field *fields,
 {
 	struct lustre_item_rule *rule;
 
-	if ((lustre_query_times % item->query_interval) != 0) {
-		LINFO("%s lustre query times: %"PRIu64" interval: %d",
-				item->li_type->lit_type_name, 
-				lustre_query_times, 
-				item->query_interval);
+	if ((item->li_definition->ld_query_times % item->li_query_interval)
+	    != 0) {
+		LINFO("%s lustre query times: %llu interval: %d",
+		      item->li_type->lit_type_name,
+		      item->li_definition->ld_query_times,
+		      item->li_query_interval);
 		return 0;
 	}
 
@@ -347,6 +340,11 @@ void lustre_definition_fini(struct lustre_definition *definition)
 		lustre_entry_free(definition->ld_root);
 	if (definition->ld_filename)
 		free(definition->ld_filename);
+	definition->ld_root = NULL;
+	definition->ld_filename = NULL;
+	definition->ld_inited = 0;
+	definition->ld_query_times = 0;
+	definition->ld_read_file = NULL;
 }
 
 /* TODO: read form XML file */
@@ -648,7 +646,7 @@ struct lustre_item *lustre_item_alloc()
 	}
 	INIT_LIST_HEAD(&item->li_rules);
 	INIT_LIST_HEAD(&item->li_filters);
-	item->query_interval = 1;
+	item->li_query_interval = 1;
 	return item;
 }
 
@@ -686,6 +684,7 @@ static int lustre_config_item(const oconfig_item_t *ci,
 		LERROR("Item: failed to alloc item");
 		return -1;
 	}
+	item->li_definition = &conf->lc_definition;
 
 	for (i = 0; i < ci->children_num; i++) {
 		oconfig_item_t *child = ci->children + i;
@@ -697,8 +696,9 @@ static int lustre_config_item(const oconfig_item_t *ci,
 				       child->key);
 				break;
 			}
-			item->li_type = lustre_item_type_find(conf->lc_definition.ld_root,
-							      value);
+			item->li_type = lustre_item_type_find(
+				conf->lc_definition.ld_root,
+				value);
 			if (item->li_type == NULL) {
 				LERROR("Item: failed to get type for \"%s\"",
 				       value);
@@ -714,16 +714,17 @@ static int lustre_config_item(const oconfig_item_t *ci,
 				break;
 			}
 		} else if (strcasecmp("Query_interval", child->key) == 0) {
-			status = lustre_config_get_int (child, &item->query_interval);
+			status = lustre_config_get_int(child,
+				&item->li_query_interval);
 			if (status) {
 				LERROR("Item: failed to get value for \"%s\"",
 				       child->key);
 				break;
 			}
-			if (item->query_interval <= 0) { 
+			if (item->li_query_interval <= 0) {
 				status = -EINVAL;
-				LERROR("Item: query_interval must > 0, now is: %d",
-						item->query_interval);
+				LERROR("Item: query interval should be "
+				       "positive, %d", item->li_query_interval);
 				break;
 			}
 		} else if (strcasecmp("Filter", child->key) == 0) {
@@ -754,7 +755,6 @@ static int lustre_config_item(const oconfig_item_t *ci,
 void lustre_config_free(struct lustre_configs *conf)
 {
 	assert(conf);
-	regfree(&conf->lc_regex);
 	lustre_definition_fini(&conf->lc_definition);
 
 	free(conf);
@@ -764,7 +764,6 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci)
 {
 	int i;
 	int status = 0;
-	const char *pattern = "\\$\\{(subpath|content):(.+)\\}";
 	struct lustre_configs *config;
 
 	config = calloc(1, sizeof (struct lustre_configs));
@@ -772,9 +771,6 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci)
 		LERROR("not enough memory\n");
 		return NULL;
 	}
-
-	status = lustre_compile_regex(&config->lc_regex, pattern);
-	assert(status == 0);
 
 	for (i = 0; i < ci->children_num; i++)
 	{

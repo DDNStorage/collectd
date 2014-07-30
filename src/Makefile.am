@@ -581,6 +581,7 @@ endif # BUILD_PLUGIN_LOAD
 if BUILD_PLUGIN_LUSTRE
 pkglib_LTLIBRARIES += lustre.la
 lustre_la_SOURCES = lustre.c \
+		    lustre_read.c lustre_read.h \
 		    lustre_common.h list.h \
 		    lustre_xml.c lustre_xml.h \
 		    lustre_config.c lustre_config.h

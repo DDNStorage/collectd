@@ -98,6 +98,7 @@ struct lustre_field {
 				  	 LUSTRE_ITEM_FLAG_FIELD)
 
 struct lustre_item_type {
+	struct lustre_definition		 *lit_definition;
 	/* Pointer to entry */
 	struct lustre_entry			 *lit_entry;
 	char					  lit_type_name[MAX_NAME_LENGH + 1];
@@ -141,12 +142,14 @@ struct lustre_item_filter {
 };
 
 struct lustre_item {
-	struct lustre_item_type *li_type;
+	struct lustre_definition *li_definition;
+	struct lustre_item_type  *li_type;
+	int                       li_query_interval;
 	int query_interval;
 	/* Linkage to type */
-	struct list_head	 li_linkage;
-	struct list_head	 li_rules;
-	struct list_head	 li_filters;
+	struct list_head	  li_linkage;
+	struct list_head	  li_rules;
+	struct list_head	  li_filters;
 };
 
 struct lustre_item_data {
@@ -192,48 +195,51 @@ typedef enum {
 
 
 struct lustre_entry {
+	struct lustre_definition *le_definition;
 	/* Pointer to parent */
-	struct lustre_entry	*le_parent;
+	struct lustre_entry	 *le_parent;
 	/* Relative path from parent */
-	char			 le_subpath[MAX_NAME_LENGH + 1];
-	lustre_subpath_t	 le_subpath_type;
-	regex_t			 le_subpath_regex;
-	int			 le_subpath_field_number;
+	char			  le_subpath[MAX_NAME_LENGH + 1];
+	lustre_subpath_t	  le_subpath_type;
+	regex_t			  le_subpath_regex;
+	int			  le_subpath_field_number;
 	/* Directory or file */
-	mode_t			 le_mode;
+	mode_t			  le_mode;
 	/* TODO: data */
-	int			 le_flags;
+	int			  le_flags;
 
 	/* List of children */
-	struct list_head	 le_children;
+	struct list_head	  le_children;
 	/* Linkage to parent's le_children */
-	struct list_head	 le_linkage;
+	struct list_head	  le_linkage;
 	/* List of item types */
-	struct list_head	 le_item_types;
+	struct list_head	  le_item_types;
 	/* List of path field types */
-	struct list_head	 le_subpath_field_types;
+	struct list_head	  le_subpath_field_types;
 
 	/* Whether I am active */
-	_Bool			 le_active;
+	_Bool			  le_active;
 	/* List of active children */
-	struct list_head	 le_active_children;
+	struct list_head	  le_active_children;
 	/* Linkage to parent's le_active_children */
-	struct list_head	 le_active_linkage;
+	struct list_head	  le_active_linkage;
 	/* List of active item types */
-	struct list_head	 le_active_item_types;
+	struct list_head	  le_active_item_types;
 };
+
+typedef int (*lustre_read_file_fn)
+	(const char *path, char **buf, ssize_t *data_size);
 
 struct lustre_definition {
 	_Bool			  ld_inited;
 	struct lustre_entry	 *ld_root;
-	char			 *ld_version;
 	char			 *ld_filename;
+	unsigned long long	  ld_query_times;
+	lustre_read_file_fn	  ld_read_file;
 };
 
 struct lustre_configs {
 	struct lustre_definition lc_definition;
-	regex_t			 lc_regex;
-	_Bool			 lc_debug;
 };
 struct lustre_configs *lustre_config(oconfig_item_t *ci);
 int lustre_config_save(struct lustre_configs *conf,
@@ -264,5 +270,4 @@ void lustre_item_rule_add(struct lustre_item *item,
 void lustre_item_rule_replace(struct lustre_item *item,
 			      struct lustre_item_rule *old,
 			      struct lustre_item_rule *new);
-void lustre_query_times_inc();
 #endif /* LUSTRE_CONFIG_H */
