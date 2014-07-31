@@ -152,7 +152,7 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	struct lustre_subpath_field *subpath_field;
 	struct lustre_field *content_field;
 	char key_field[MAX_SUBMIT_STRING_LENGTH];
-	const char *pattern = "\\$\\{(subpath|content|key):(.+)\\}";
+	const char *pattern = "\\$\\{(subpath|content|key):([^}]+)\\}";
 	static regex_t regex;
 	static int regex_inited;
 	int i;
