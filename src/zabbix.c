@@ -11,9 +11,12 @@
 #include <strings.h>
 #include <pthread.h>
 
-static char	*zbx_server = "localhost";
-static char	*zbx_hostname = "localhost";
+static char	*zbx_server = NULL;
+static char	*zbx_hostname = NULL;
 unsigned short	zbx_server_port = 10051;
+
+#define ZBX_SERVER_DEFAULT	"127.0.0.1"
+#define ZBX_HOSTNAME_DEFAULT	"localhost"
 
 #define ZBX_CONN_TIMEO	5
 
@@ -22,6 +25,7 @@ unsigned short	zbx_server_port = 10051;
 #define ZBX_TCP_HEADER	(ZBX_TCP_HEADER_DATA ZBX_TCP_HEADER_VERSION)
 #define ZBX_TCP_HEADER_LEN		5
 
+#define ZBX_VALUE_MAX_LEN	64
 static const char *config_keys[] = {
 	"ServerActive",
 	"Hostname"
@@ -64,7 +68,8 @@ static int zbx_tcp_send(int fd, const char *data)
 static int zbx_tcp_connect(char *ip, unsigned short port, int timeo)
 {
 	struct sockaddr_in servaddr_in;
-	int		fd = 0, timeout = 0;
+	int		fd = 0;
+	struct timeval	timeout;
 	int		status = 0;
 
 	servaddr_in.sin_family = AF_INET;
@@ -78,11 +83,12 @@ static int zbx_tcp_connect(char *ip, unsigned short port, int timeo)
 	}
 
 	if (0 != timeo) {
-		timeout = timeo * 1000;
+		timeout.tv_sec = timeo;
+		timeout.tv_usec = 0;
 		status = setsockopt(fd,
 				    SOL_SOCKET,
 				    SO_RCVTIMEO,
-				    (const char *)&timeout,
+				    (struct timeval *)&timeout,
 				    sizeof(timeout));
 		if (status < 0)
 			WARNING("zabbix: set rcvtimeo failed: %s",
@@ -94,7 +100,7 @@ static int zbx_tcp_connect(char *ip, unsigned short port, int timeo)
 				    (const char *)&timeout,
 				    sizeof(timeout));
 		if (status < 0)
-			WARNING("zabbix: set rcvtimeo failed: %s",
+			WARNING("zabbix: set sndtimeo failed: %s",
 				strerror(errno));
 	}
 
@@ -115,6 +121,12 @@ static void zbx_send_to_server(struct zbx_json *json)
 	int status = 0;
 	int fd = 0;
 
+	if (zbx_server == NULL)
+		zbx_server = ZBX_SERVER_DEFAULT;
+
+	if (zbx_hostname == NULL)
+		zbx_hostname = ZBX_HOSTNAME_DEFAULT;
+
 	fd = zbx_tcp_connect(zbx_server,
 			     zbx_server_port,
 			     ZBX_CONN_TIMEO);
@@ -127,6 +139,7 @@ static void zbx_send_to_server(struct zbx_json *json)
 	status = zbx_tcp_send(fd, json->buffer);
 	if (status < 0) {
 		ERROR("zabbix: Send data to server failed");
+		close(fd);
 		return ;
 	}
 
@@ -170,42 +183,35 @@ static int zbx_vl_to_key(char *buffer, size_t buffer_size,
 {
 	char *pos = NULL;
 	char *end = buffer + buffer_size;
-	int len = 0, n = 0;
+	int len = 0;
 
-	len += strlen(vl->host) +
-		   strlen(vl->plugin) +
-		   strlen(vl->plugin_instance) +
-		   strlen(vl->type_instance) + 4;
+	len += strlen(vl->plugin) +
+	       strlen(vl->plugin_instance) +
+	       strlen(vl->type) +
+	       strlen(vl->type_instance) + 4;
 
 	if (len > buffer_size) {
 		ERROR("zabbix: key len %d is too long", len);
 		return -EINVAL;
 	}
 
-	n = 4;
 	pos = buffer;
-	if (vl->host[0] != '\0')
-		pos += snprintf(pos, end - pos, "%s", vl->host);
-
 	if (vl->plugin[0] != '\0') {
-		pos += snprintf(pos, end - pos, ".%s", vl->plugin);
-		n--;
+		pos += snprintf(pos, end - pos, "%s", vl->plugin);
 	}
 
 	if (vl->plugin_instance[0] != '\0') {
 		pos += snprintf(pos, end - pos, ".%s", vl->plugin_instance);
-		n--;
+	}
+
+	if (vl->type[0] != '\0') {
+		pos += snprintf(pos, end - pos, ".%s", vl->type);
 	}
 
 	if (vl->type_instance[0] != '\0') {
 		pos += snprintf(pos, end - pos, ".%s", vl->type_instance);
-		n--;
 	}
 
-	if ((pos - buffer) != (len - n)) {
-		ERROR("zabbix: snprintf operation wrong, buf: %s", buffer);
-		return -1;
-	}
 	return 0;
 }
 
@@ -214,8 +220,8 @@ static int zbx_write(const data_set_t *ds,
 		user_data_t __attribute__((unused)) *user_data)
 {
 	int		i = 0;
-	char	key[512];
-	char	value[32];
+	char	key[DATA_MAX_NAME_LEN];
+	char	value[ZBX_VALUE_MAX_LEN];
 	int	status;
 
 	status = zbx_vl_to_key(key, sizeof(key), vl);
@@ -317,7 +323,7 @@ static int zbx_config(const char *key, const char *value)
 			return 0;
 		}
 		zbx_hostname = strdup(value);
-		INFO("hostname %s", zbx_hostname);
+		INFO("zabbix: hostname %s", zbx_hostname);
 	} else {
 		ERROR("zabbix: plugin config error, key: %s value: %s",
 		      key, value);
