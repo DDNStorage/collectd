@@ -133,6 +133,7 @@ static int lustre_key_field_get(char *field, size_t size, const char *name)
 	return 0;
 }
 
+#define TYPE_NAME_LEN	64
 static int lustre_submit_option_get(struct lustre_submit_option *option,
 				    struct list_head *path_head,
 				    struct lustre_field_type **field_types,
@@ -145,10 +146,11 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	int status = 0;
 	regmatch_t matched_fields[3];
 	char *pointer = option->lso_string;
+	char *match_value = NULL;
 	int max_size = size - 1;
 	char *value_pointer = value;
-	char type[MAX_NAME_LENGH + 1];
-	char name[MAX_NAME_LENGH + 1];
+	char type[TYPE_NAME_LEN + 1];
+	char name[TYPE_NAME_LEN + 1];
 	struct lustre_subpath_field *subpath_field;
 	struct lustre_field *content_field;
 	char key_field[MAX_SUBMIT_STRING_LENGTH];
@@ -170,6 +172,10 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				 matched_fields, 0);
 		if (status) {
 			/* No match */
+			if (strlen(pointer) > max_size) {
+				status = -EINVAL;
+				break;
+			}
 			strncpy(value_pointer, pointer, max_size);
 			value_pointer += strlen(pointer);
 			max_size -= strlen(pointer);
@@ -185,6 +191,15 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				(pointer - option->lso_string);
 			finish = matched_fields[i].rm_eo +
 				(pointer - option->lso_string);
+
+			if ((i != 0) && ((finish - start) > TYPE_NAME_LEN)) {
+				status = -EINVAL;
+				ERROR("%s length: %d is too long",
+				       (i == 1) ? "type" : "name",
+				       finish - start);
+				goto out;
+			}
+
 			if (i == 1) {
 				strncpy(type, option->lso_string + start,
 					finish - start);
@@ -195,13 +210,7 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				name[finish - start] = '\0';
 			}
 		}
-		if (matched_fields[0].rm_so > 0) {
-			strncpy(value_pointer, pointer,
-				matched_fields[0].rm_so);
-			value_pointer += matched_fields[0].rm_so;
-			value_pointer[0] = '\0';
-			max_size -= matched_fields[0].rm_so;
-		}
+
 		if (strcmp(type, "subpath") == 0) {
 			subpath_field = lustre_subpath_field_find(path_head,
 								  name);
@@ -209,10 +218,7 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				ERROR("failed to get subpath for %s", name);
 				break;
 			}
-			strncpy(value_pointer, subpath_field->lpf_value,
-				max_size);
-			value_pointer += strlen(subpath_field->lpf_value);
-			max_size -= strlen(subpath_field->lpf_value);
+			match_value = subpath_field->lpf_value;
 		} else if (strcmp(type, "content") == 0) {
 			content_field = lustre_field_find(fields,
 							  content_field_number,
@@ -221,10 +227,7 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				ERROR("failed to get content for %s", name);
 				break;
 			}
-			strncpy(value_pointer, content_field->lf_string,
-				max_size);
-			value_pointer += strlen(content_field->lf_string);
-			max_size -= strlen(content_field->lf_string);
+			match_value = content_field->lf_string;
 		} else if (strcmp(type, "key") == 0) {
 			status = lustre_key_field_get(key_field,
 						      sizeof(key_field),
@@ -234,12 +237,36 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				      name);
 				break;
 			}
-			strncpy(value_pointer, key_field, max_size);
-			value_pointer += strlen(key_field);
+			match_value = key_field;
+		} else {
+			ERROR("unknown type \"%s\"", type);
+			status = -EINVAL;
+			break;
 		}
+
+		if (strlen(match_value) + matched_fields[0].rm_so > max_size) {
+			ERROR("option value overflows: size: %d", size);
+			status = -EINVAL;
+			break;
+		}
+
+		if (matched_fields[0].rm_so > 0) {
+			strncpy(value_pointer, pointer,
+				matched_fields[0].rm_so);
+			value_pointer += matched_fields[0].rm_so;
+			value_pointer[0] = '\0';
+			max_size -= matched_fields[0].rm_so;
+		}
+
+		strncpy(value_pointer, match_value, max_size);
+		value_pointer += strlen(match_value);
+		max_size -= strlen(match_value);
+		match_value = NULL;
+
 		pointer += matched_fields[0].rm_eo;
 	}
 
+out:
 	return status;
 }
 
