@@ -2,6 +2,7 @@
 #include "plugin.h"
 #include "common.h"
 #include "zbxjson.h"
+#include "utils_cache.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -223,43 +224,53 @@ static int zbx_write(const data_set_t *ds,
 	char	key[DATA_MAX_NAME_LEN];
 	char	value[ZBX_VALUE_MAX_LEN];
 	int	status;
+	gauge_t *rate;
 
-	status = zbx_vl_to_key(key, sizeof(key), vl);
-	if (status)
-		return status;
-
-	for (i = 0; i < vl->values_len; i++) {
-		switch (ds->ds[i].type) {
-		case DS_TYPE_DERIVE:
-			snprintf(value,
-				 sizeof(value),
-				 "%"PRIi64,
-				 vl->values[i].derive);
-			break;
-		case DS_TYPE_GAUGE:
-			snprintf(value,
-				 sizeof(value),
-				 "%lf",
-				 vl->values[i].gauge);
-			break;
-		case DS_TYPE_COUNTER:
-			snprintf(value,
-				 sizeof(value),
-				 "%llu",
-				 vl->values[i].counter);
-			break;
-		case DS_TYPE_ABSOLUTE:
-			snprintf(value,
-				 sizeof(value),
-				 "%"PRIi64,
-				 vl->values[i].absolute);
-			break;
-		default:
-			return -EINVAL;
-		}
-		zbx_dispatch_to_server(key, value);
+	if (ds->ds_num != 1) {
+		ERROR ("zabbix: The \"%s\" type (data set) has more than one "
+		       "data source. This is currently not supported by this plugin. "
+		       "Sorry.", ds->type);
+		return (EINVAL);
 	}
 
+	rate = uc_get_rate(ds, vl);
+	if (rate == NULL) {
+		char ident[6 * DATA_MAX_NAME_LEN];
+		FORMAT_VL (ident, sizeof (ident), vl);
+		ERROR ("zabbix: Unable to read the current rate of \"%s\".",
+		       ident);
+		return (ENOENT);
+	}
+
+	if (isnan(rate[0])) {
+		sfree(rate);
+		return 0;
+	}
+
+	status = zbx_vl_to_key(key, sizeof(key), vl);
+	if (status) {
+		sfree(rate);
+		return status;
+	}
+
+	switch(ds->ds[i].type) {
+	case DS_TYPE_GAUGE:
+		snprintf(value, sizeof(value), "%f", vl->values[i].gauge);
+		break;
+	case DS_TYPE_DERIVE:
+	case DS_TYPE_COUNTER:
+	case DS_TYPE_ABSOLUTE:
+		snprintf(value, sizeof(value), "%f", rate[0]);
+		break;
+	default:
+		sfree(rate);
+		return -EINVAL;
+	}
+
+	INFO("zabbix: key: %s value: %s", key, value);
+	zbx_dispatch_to_server(key, value);
+
+	sfree(rate);
 	return 0;
 }
 
