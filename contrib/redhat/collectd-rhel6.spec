@@ -592,11 +592,13 @@ package.
 
 %package -n libcollectdclient
 Summary:	Collectd client library
+Group:		System Environment/Daemons
 %description -n libcollectdclient
 Collectd client library
 
 %package -n libcollectdclient-devel
 Summary:	Development files for libcollectdclient
+Group:		System Environment/Daemons
 Requires:	pkgconfig
 Requires:	libcollectdclient%{?_isa} = %{version}-%{release}
 %description -n libcollectdclient-devel
