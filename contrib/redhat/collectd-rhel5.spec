@@ -1254,10 +1254,11 @@ Development files for libcollectdclient
 
 	#--enable-all-plugins=yes \
 
+mkdir -p libltdl/config # Workaround for RHEL5 build
 autoheader
-automake --force-missing --add-missing
+(automake --force-missing --add-missing| echo) # Workaround for RHEL5 build
 autoconf
-%configure CFLAGS="%{optflags} -DLT_LAZY_OR_NOW=\"RTLD_LAZY|RTLD_GLOBAL\"" \
+(%configure CFLAGS="%{optflags} -DLT_LAZY_OR_NOW=\"RTLD_LAZY|RTLD_GLOBAL\"" \
 	--disable-static \
 	--without-included-ltdl \
 	--enable-aggregation \
@@ -1385,9 +1386,10 @@ autoconf
 	%{?_with_wireless}\
 	%{?_with_write_graphite} \
 	%{?_with_write_http} \
-	%{?_with_zabbix}
+	%{?_with_zabbix} | echo) # Workaround for RHEL5 build
 
-
+# Workaround for RHEL5 build
+cp ../../libtool .
 %{__make} %{?_smp_mflags}
 
 
@@ -1487,6 +1489,10 @@ fi
 %{_mandir}/man5/collectd-unixsock.5*
 %{_mandir}/man5/collectd.conf.5*
 %{_mandir}/man5/types.db.5*
+### Just workaround for RHEL5
+/usr/lib/perl5/site_perl/5.8.8/Collectd.pm
+/usr/lib/perl5/site_perl/5.8.8/Collectd/Plugins/OpenVZ.pm
+/usr/lib/perl5/site_perl/5.8.8/Collectd/Unixsock.pm
 
 # all plugins bundled with the main collectd package
 %{_libdir}/%{name}/match_empty_counter.so
