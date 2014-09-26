@@ -32,6 +32,31 @@ static const char *config_keys[] = {
 	"Hostname"
 };
 
+uint64_t zbx_htole_uint64(uint64_t data)
+{
+	unsigned char	buf[8];
+
+	buf[0] = (unsigned char)data;
+	data >>= 8;
+	buf[1] = (unsigned char)data;
+	data >>= 8;
+	buf[2] = (unsigned char)data;
+	data >>= 8;
+	buf[3] = (unsigned char)data;
+	data >>= 8;
+	buf[4] = (unsigned char)data;
+	data >>= 8;
+	buf[5] = (unsigned char)data;
+	data >>= 8;
+	buf[6] = (unsigned char)data;
+	data >>= 8;
+	buf[7] = (unsigned char)data;
+
+	memcpy(&data, buf, sizeof(buf));
+
+	return data;
+}
+
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
 static int zbx_tcp_send(int fd, const char *data)
@@ -49,7 +74,7 @@ static int zbx_tcp_send(int fd, const char *data)
 
 	/* write data length */
 	len = strlen(data);
-	len = htole64(len);
+	len = zbx_htole_uint64(len);
 	status = swrite(fd, (char *)&len, sizeof(len));
 	if (status < 0) {
 		ERROR("zabbix: write to server failed: %s", strerror(errno));
@@ -77,7 +102,7 @@ static int zbx_tcp_connect(char *ip, unsigned short port, int timeo)
 	servaddr_in.sin_addr.s_addr = inet_addr(ip);
 	servaddr_in.sin_port = htons(port);
 
-	fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
 		ERROR("zabbix: create socket failed: %s", strerror(errno));
 		return -1;

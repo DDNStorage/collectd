@@ -103,7 +103,7 @@ void stress_timer_stop(struct stress_timer *t)
 	memcpy(&(t->st_stopSysTime), &(ru.ru_stime), sizeof( struct timeval ));
 }
 
-const double stress_timer_realtime(const struct stress_timer *t)
+double stress_timer_realtime(const struct stress_timer *t)
 {
 	double value;
 
@@ -114,7 +114,7 @@ const double stress_timer_realtime(const struct stress_timer *t)
 	return value;
 }
 
-const double stress_timer_usertime(const struct stress_timer *t)
+double stress_timer_usertime(const struct stress_timer *t)
 {
 	double value;
 
@@ -125,7 +125,7 @@ const double stress_timer_usertime(const struct stress_timer *t)
 	return value;
 }
 
-const double stress_timer_systime(const struct stress_timer *t)
+double stress_timer_systime(const struct stress_timer *t)
 {
 	double value;
 
