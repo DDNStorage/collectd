@@ -42,7 +42,9 @@ static int lustre_read(void)
 
 	lustre_config_g->lc_definition.ld_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(lustre_config_g->lc_definition.ld_root, "/", &path_head);
+	return lustre_entry_read(lustre_config_g->lc_definition.ld_root,
+				 "/",
+				 &path_head);
 }
 
 static int lustre_config_internal(oconfig_item_t *ci)
@@ -55,8 +57,17 @@ static int lustre_config_internal(oconfig_item_t *ci)
 	return 1;
 }
 
+static int lustre_shutdown()
+{
+	if (lustre_config_g)
+		lustre_definition_fini(&lustre_config_g->lc_definition);
+
+	return 0;
+}
+
 void module_register (void)
 {
 	plugin_register_complex_config("lustre", lustre_config_internal);
 	plugin_register_read("lustre", lustre_read);
+	plugin_register_shutdown ("lustre", lustre_shutdown);
 } /* void module_register */
