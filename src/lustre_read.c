@@ -665,12 +665,11 @@ lustre_subpath_fields_alloc(struct lustre_entry	*entry)
 	return fields;
 }
 
-static void lustre_subpath_fields_free(struct lustre_subpath_fields *fields)
+void lustre_subpath_fields_free(struct lustre_subpath_fields *fields)
 {
 	free(fields->lpfs_fileds);
 	free(fields);
 }
-
 
 /*
  Return 1 when matched, 0 if not, -1 if error.
@@ -882,9 +881,13 @@ lustre_entry_read(struct lustre_entry *entry,
 				subpath = dp->d_name;
 				status =  _lustre_entry_read(entry, pwd,
 					subpath, path_head);
+
+				list_del_init(&subpath_fields->lpfs_linkage);
+				lustre_subpath_fields_free(subpath_fields);
+				subpath_fields = NULL;
+
 				if (status)
 					break;
-				list_del_init(&subpath_fields->lpfs_linkage);
 			} else if (status) {
 				ERROR("failed to match subpath %s", dp->d_name);
 				break;

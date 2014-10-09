@@ -26,5 +26,6 @@ int
 lustre_entry_read(struct lustre_entry *entry,
 		  char *pwd,
 		  struct list_head *path_head);
+void lustre_subpath_fields_free(struct lustre_subpath_fields *fields);
 #endif /* LUSTRE_READ_H */
 
