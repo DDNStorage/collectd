@@ -22,6 +22,7 @@ COLLECTDMONPIDDIR="/var/run"
 COLLECTDMONPID="$COLLECTDMONPIDDIR/collectdmon.pid"
 
 MAXWAIT=30
+COLLECTD_VALGRIND_PREFIX="/tmp/collectd"
 
 if [ -r /etc/sysconfig/$service ]; then
 	. /etc/sysconfig/$service
@@ -42,6 +43,22 @@ check_config() {
         return 0
 }
 
+memcheck_prepare () {
+	status -p $COLLECTDMONPID $prog > /dev/null 2>&1
+	rc="$?"
+	if [ $rc -eq 0 ]; then
+		echo "collectd is running, stop it first"
+		exit $rc
+	fi
+
+	valgrind --version > /dev/null 2>&1
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		echo "valgrind not fould, please install it first, exit"
+		return $rc
+	fi
+}
+
 start () {
 	echo -n $"Starting collectd: "
 	check_config
@@ -51,7 +68,24 @@ start () {
 		echo $"not starting due to configuration error"
 		failure $"not starting $service due to configuration error"
 	else
-		daemon --user "${RUNAS:-root}" $prog -P $COLLECTDMONPID -c $COLLECTD -- -C "$CONFIG" $ARGS
+		if [ "$1" = "memcheck" ];then
+			memcheck_prepare
+			rc="$?"
+			if test "$rc" -ne 0; then
+				RETVAL=$rc
+				echo "memcheck prepare failed"
+			fi
+			logfilename="/tmp/valgrind-$(date '+%F-%T-%N')".log
+			daemon --user "${RUNAS:-root}" valgrind --trace-children=yes --leak-check=full --show-reachable=yes \
+				 --log-file=$logfilename $prog \
+				 -P $COLLECTDMONPID -c $COLLECTD -- -C "$CONFIG" $ARGS
+
+			CPID=`head -n 1 ${COLLECTDMONPID}`
+			collectd_log=${COLLECTD_VALGRIND_PREFIX}_${CPID}.log
+			echo $logfilename > $collectd_log
+		else
+			daemon --user "${RUNAS:-root}" $prog -P $COLLECTDMONPID -c $COLLECTD -- -C "$CONFIG" $ARGS
+		fi
 		RETVAL=$?
 		echo
 		[ $RETVAL -eq 0 ] && touch /var/lock/subsys/$service
@@ -79,13 +113,49 @@ restart () {
 	fi
 }
 
+memcheck_parse () {
+	if [ ! -f $1 ]; then
+		echo "Log file $1 not exist"
+		return -1
+	fi
+
+	checklog=0
+
+	pair_values=`tail -n 100 $1 |grep "definitely lost:"|awk '{print $4, $7}'`
+	lost_bytes=`echo $pair_values|awk '{print $1}'`
+	blocks=`echo $pair_values|awk '{print $2}'`
+	if [ $lost_bytes -gt 0 ];then
+		echo "MEMORY LEAK PROBLEMS: lost bytes: $lost_bytes in $blocks blocks."
+		checklog=1
+	fi
+
+	pair_values=`tail -n 100 $1 |grep "possibly lost:"|awk '{print $4, $7}'`
+	plost_bytes=`echo $pair_values|awk '{print $1}'`
+	pblocks=`echo $pair_values|awk '{print $2}'`
+	if [ $plost_bytes -gt 0 ];then
+		echo "MEMORY LEAK PROBLEMS: possible lost bytes: $plost_bytes in $pblocks blocks."
+		checklog=1
+	fi
+
+	if [ $checklog -eq 1 ];then
+		echo "Please check log file $1 in detail."
+	fi
+}
+
 # See how we were called.
 case "$1" in
   start)
-	start
+	start $2
 	;;
   stop)
+	CPID=`head -n 1 ${COLLECTDMONPID}`
+	collectd_log=${COLLECTD_VALGRIND_PREFIX}_${CPID}.log
 	stop
+
+	if [ -f "${collectd_log}" ];then
+		logfilename=`tail -n 1 $collectd_log`
+		memcheck_parse $logfilename
+	fi
 	;;
   status)
 	status -p $COLLECTDMONPID $prog
