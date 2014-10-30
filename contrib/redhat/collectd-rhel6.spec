@@ -90,6 +90,7 @@
 %define with_wireless 0%{!?_without_wireless:1}
 %define with_write_graphite 0%{!?_without_write_graphite:1}
 %define with_write_http 0%{!?_without_write_http:1}
+%define with_write_tsdb 0%{!?_without_write_tsdb:1}
 %define with_zabbix 0%{!?_without_zabbix:1}
 
 # disabled plugins
