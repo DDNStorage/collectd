@@ -31,6 +31,8 @@
 
 #define MAX_JOBSTAT_FIELD_LENGTH 32
 #define MAX_SUBMIT_STRING_LENGTH DATA_MAX_NAME_LEN
+/* There might be a lot of tags, which means a long string */
+#define MAX_TSDB_TAGS_LENGTH 1024
 
 typedef enum {
 	TYPE_NULL,
@@ -49,6 +51,8 @@ typedef int (*lustre_read_fn) (struct lustre_item_type *type);
 #define LUSTRE_FIELD_FLAG_OPTION_PLUGIN_INSTANCE	0x00000020
 #define LUSTRE_FIELD_FLAG_OPTION_TYPE			0x00000040
 #define LUSTRE_FIELD_FLAG_OPTION_TYPE_INSTANCE		0x00000080
+#define LUSTRE_FIELD_FLAG_OPTION_TSDB_NAME		0x00000100
+#define LUSTRE_FIELD_FLAG_OPTION_TSDB_TAGS		0x00000200
 #define LUSTRE_FIELD_FLAG_FILLED	(LUSTRE_FIELD_FLAG_INDEX | \
 					 LUSTRE_FIELD_FLAG_NAME | \
 					 LUSTRE_FIELD_FLAG_TYPE |\
@@ -56,7 +60,9 @@ typedef int (*lustre_read_fn) (struct lustre_item_type *type);
 					 LUSTRE_FIELD_FLAG_OPTION_PLUGIN |\
 					 LUSTRE_FIELD_FLAG_OPTION_PLUGIN_INSTANCE |\
 					 LUSTRE_FIELD_FLAG_OPTION_TYPE |\
-					 LUSTRE_FIELD_FLAG_OPTION_TYPE_INSTANCE)
+					 LUSTRE_FIELD_FLAG_OPTION_TYPE_INSTANCE |\
+					 LUSTRE_FIELD_FLAG_OPTION_TSDB_NAME |\
+					 LUSTRE_FIELD_FLAG_OPTION_TSDB_TAGS)
 
 
 struct lustre_submit_option {
@@ -69,6 +75,9 @@ struct lustre_submit {
 	struct lustre_submit_option ls_plugin_instance;
 	struct lustre_submit_option ls_type;
 	struct lustre_submit_option ls_type_instance;
+	/* Support for submiting to write_tsdb plugin */
+	struct lustre_submit_option ls_tsdb_name;
+	struct lustre_submit_option ls_tsdb_tags;
 };
 
 struct lustre_field_type {
