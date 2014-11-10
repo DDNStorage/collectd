@@ -155,6 +155,8 @@ lustre_entry_free(struct lustre_entry *entry)
 #define LUSTRE_XML_HOST			"host"
 #define LUSTRE_XML_PLUGIN		"plugin"
 #define LUSTRE_XML_PLUGIN_INSTANCE	"plugin_instance"
+#define LUSTRE_XML_TSDB_NAME		"tsdb_name"
+#define LUSTRE_XML_TSDB_TAGS		"tsdb_tags"
 #define LUSTRE_XML_OPTION_TYPE		"type"
 #define LUSTRE_XML_TYPE_INSTANCE	"type_instance"
 #define LUSTRE_XML_CONSTANT		"constant"
@@ -334,6 +336,12 @@ lustre_option_name_extract(char *name,
 	} else if (strcmp(name, LUSTRE_XML_TYPE_INSTANCE) == 0) {
 		*flag = LUSTRE_FIELD_FLAG_OPTION_TYPE_INSTANCE;
 		*option = &submit->ls_type_instance;
+	} else if (strcmp(name, LUSTRE_XML_TSDB_NAME) == 0) {
+		*flag = LUSTRE_FIELD_FLAG_OPTION_TSDB_NAME;
+		*option = &submit->ls_tsdb_name;
+	} else if (strcmp(name, LUSTRE_XML_TSDB_TAGS) == 0) {
+		*flag = LUSTRE_FIELD_FLAG_OPTION_TSDB_TAGS;
+		*option = &submit->ls_tsdb_tags;
 	} else {
 		LERROR("XML: unkown type");
 		return -1;

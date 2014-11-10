@@ -34,10 +34,13 @@ static void lustre_instance_submit(const char *host,
 				   const char *plugin_instance,
 				   const char *type,
 				   const char *type_instance,
+				   const char *tsdb_name,
+				   const char *tsdb_tags,
 				   uint64_t value)
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
+	int status;
 
 	if (strcmp(type, "derive") == 0) {
 		values[0].derive = value;
@@ -52,6 +55,11 @@ static void lustre_instance_submit(const char *host,
 		return;
 	}
 
+	vl.meta = meta_data_create();
+	if (vl.meta == NULL) {
+		LERROR("Submit: meta_data_create failed");
+		return;
+	}
 	vl.values = values;
 	vl.values_len = 1;
 	sstrncpy(vl.host, host, sizeof(vl.host));
@@ -60,20 +68,37 @@ static void lustre_instance_submit(const char *host,
 		 sizeof(vl.plugin_instance));
 	sstrncpy(vl.type, type, sizeof(vl.type));
 	sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
+	status = meta_data_add_string(vl.meta, "tsdb_name", tsdb_name);
+	if (status != 0) {
+		LERROR("Submit: meta_data_add_string failed");
+		goto out;
+	}
+	status = meta_data_add_string(vl.meta, "tsdb_tags", tsdb_tags);
+	if (status != 0) {
+		LERROR("Submit: meta_data_add_string failed");
+		goto out;
+	}
 	LINFO("host %s, "
 	      "plugin %s, "
 	      "plugin_instance %s, "
 	      "type %s, "
 	      "type_instance %s, "
-	      "value %llu",
+	      "tsdb_name %s, "
+	      "tsdb_tags %s, "
+      	      "value %llu",
 	      vl.host,
 	      vl.plugin,
 	      vl.plugin_instance,
 	      vl.type,
 	      vl.type_instance,
+	      tsdb_name,
+	      tsdb_tags,
 	      (unsigned long long)vl.values[0].derive);
 
 	plugin_dispatch_values(&vl);
+out:
+	meta_data_destroy(vl.meta);
+	vl.meta = NULL;
 }
 
 static struct lustre_subpath_field *
@@ -283,6 +308,8 @@ static int lustre_submit(struct lustre_submit *submit,
 	char plugin_instance[MAX_SUBMIT_STRING_LENGTH];
 	char type[MAX_SUBMIT_STRING_LENGTH];
 	char type_instance[MAX_SUBMIT_STRING_LENGTH];
+	char tsdb_name[MAX_SUBMIT_STRING_LENGTH];
+	char tsdb_tags[MAX_TSDB_TAGS_LENGTH];
 	int status;
 
 	status = lustre_submit_option_get(&submit->ls_host,
@@ -335,8 +362,30 @@ static int lustre_submit(struct lustre_submit *submit,
 		return status;
 	}
 
+	status = lustre_submit_option_get(&submit->ls_tsdb_name,
+					  path_head, field_types,
+					  fields, content_field_number,
+					  content_index, tsdb_name,
+					  MAX_SUBMIT_STRING_LENGTH);
+	if (status) {
+		ERROR("submit: failed to get tsdb_name");
+		return status;
+	}
+
+	status = lustre_submit_option_get(&submit->ls_tsdb_tags,
+					  path_head, field_types,
+					  fields, content_field_number,
+					  content_index, tsdb_tags,
+					  MAX_TSDB_TAGS_LENGTH);
+	if (status) {
+		ERROR("submit: failed to get tsdb_name");
+		return status;
+	}
+
 	lustre_instance_submit(host, plugin, plugin_instance,
-			       type, type_instance, value);
+			       type, type_instance,
+			       tsdb_name, tsdb_tags,
+			       value);
 	return status;
 }
 
