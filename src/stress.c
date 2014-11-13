@@ -142,6 +142,8 @@ static void stress_instance_submit(const char *host,
 				   const char *plugin_instance,
 				   const char *type,
 				   const char *type_instance,
+				   const char *tsdb_name,
+				   const char *tsdb_tags,
 				   derive_t value)
 {
 	value_t values[1];
@@ -150,6 +152,12 @@ static void stress_instance_submit(const char *host,
 
 	values[0].derive = value;
 
+	vl.meta = meta_data_create();
+	if (vl.meta == NULL) {
+		ERROR("Submit: meta_data_create failed");
+		return;
+	}
+
 	vl.values = values;
 	vl.values_len = 1;
 	sstrncpy (vl.host, host, sizeof (vl.host));
@@ -157,6 +165,16 @@ static void stress_instance_submit(const char *host,
 	sstrncpy (vl.plugin_instance, plugin_instance, sizeof (vl.plugin_instance));
 	sstrncpy (vl.type, type, sizeof (vl.type));
 	sstrncpy (vl.type_instance, type_instance, sizeof (vl.type_instance));
+	status = meta_data_add_string(vl.meta, "tsdb_name", tsdb_name);
+	if (status != 0) {
+		ERROR("Submit: meta_data_add_string failed");
+		goto out;
+	}
+	status = meta_data_add_string(vl.meta, "tsdb_tags", tsdb_tags);
+	if (status != 0) {
+		ERROR("Submit: meta_data_add_string failed");
+		goto out;
+	}
 #if 0
 	INFO("host %s, "
 	     "plugin %s, "
@@ -187,6 +205,9 @@ static void stress_instance_submit(const char *host,
 		      vl.type,
 		      vl.type_instance,
 		      (unsigned long long)vl.values[0].derive);
+out:
+	meta_data_destroy(vl.meta);
+	vl.meta = NULL;
 }
 
 static inline long tv_delta(struct timeval *s, struct timeval *e)
@@ -224,6 +245,8 @@ void stress_get_option(int thread_id, char *option,
 	if (option_index == STRESS_OPTION_TYPE) {
 		snprintf(option, MAX_NAME, "derive");
 	} else if (option_index == STRESS_OPTION_HOST) {
+		snprintf(option, MAX_NAME, "%s", hostname_g);
+	} else if (option_index == STRESS_OPTION_PLUGIN) {
 		snprintf(option, MAX_NAME, "thread_%d-%s_%d",
 			 thread_id,
 			 stress_option_prefix[option_index], index);
@@ -233,24 +256,35 @@ void stress_get_option(int thread_id, char *option,
 	}
 }
 
+#define MAX_TSDB_TAGS_LENGTH	1024
 void *stress_proc(void *data)
 {
 	int index[STRESS_OPTION_MAX];
 	char option[STRESS_OPTION_MAX][MAX_NAME];
-	int i;
+	char tsdb_name[MAX_NAME];
+	char tsdb_tags[MAX_TSDB_TAGS_LENGTH];
+	int i, length;
 	derive_t value = 0;
 	struct stress_thread_data *thread_data;
 
 	thread_data = (struct stress_thread_data *)data;
 
 	STRESS_FOREACH(index, thread_data->std_number) {
+		length = snprintf(tsdb_tags, MAX_TSDB_TAGS_LENGTH, "thread=%d",
+				  thread_data->std_thread_id);
 		for (i = 0; i < STRESS_OPTION_MAX; i++) {
 			stress_get_option(thread_data->std_thread_id,
 					  option[i], index[i], i);
+			length += snprintf(tsdb_tags + length,
+					   MAX_TSDB_TAGS_LENGTH - length,
+					   " %s=%d",
+					   stress_option_prefix[i],
+					   index[i]);
 		}
+		snprintf(tsdb_name, MAX_NAME, "stress_%d", index[STRESS_OPTION_HOST]);
 		stress_instance_submit(option[0], option[1],
 				       option[2], option[3],
-				       option[4], value);
+				       option[4], tsdb_name, tsdb_tags, value);
 		value++;
 	}
 	return 0;
