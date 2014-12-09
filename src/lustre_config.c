@@ -434,6 +434,7 @@ static int lustre_config_common(const oconfig_item_t *ci,
 	int i;
 	int status = 0;
 	char *definition_file;
+	char *root_path = NULL;
 
 	for (i = 0; i < ci->children_num; i++) {
 		oconfig_item_t *child = ci->children + i;
@@ -451,6 +452,13 @@ static int lustre_config_common(const oconfig_item_t *ci,
 			if (status) {
 				LERROR("Common: failed to init definition");
 			}
+		}  else if (strcasecmp("RootPath", child->key) == 0) {
+			/* in case this is specified mutiple times */
+			free(root_path);
+			root_path = NULL;
+			status = lustre_config_get_string(child, &root_path);
+			if (status)
+				LERROR("Common: failed to init root path");
 		} else {
 			LERROR("Common: The \"%s\" key is not allowed"
 					"and will be ignored.", child->key);
@@ -459,6 +467,11 @@ static int lustre_config_common(const oconfig_item_t *ci,
 			break;
 	}
 
+	if (root_path && !status) {
+		if (conf->lc_definition.ld_inited)
+			strcpy(conf->lc_definition.ld_root->le_subpath, root_path);
+		free(root_path);
+	}
 	return (status);
 }
 
