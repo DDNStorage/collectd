@@ -826,6 +826,7 @@ endif
 if BUILD_PLUGIN_GPFS
 pkglib_LTLIBRARIES += gpfs.la
 gpfs_la_SOURCES = gpfs.c \
+		    lustre_read.c lustre_read.h \
 		    lustre_common.h list.h \
 		    lustre_xml.c lustre_xml.h \
 		    lustre_config.c lustre_config.h
