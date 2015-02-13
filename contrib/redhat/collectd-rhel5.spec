@@ -558,7 +558,6 @@ The Write Redis plugin stores values in Redis, a “data structures server”.
 Summary:	Zabbix plugin for collectd
 Group:		System Environment/Daemons
 Requires:	%{name}%{?_isa} = %{version}-%{release}
-BuildRequires:	ganglia-devel
 %description zabbix
 The zabbix plugin send key and value to zabbix server
 %endif
