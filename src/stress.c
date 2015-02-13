@@ -23,6 +23,8 @@
 #include "common.h"
 #include "plugin.h"
 #include <pthread.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 enum stress_option {
 	STRESS_OPTION_HOST = 0,
