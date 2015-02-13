@@ -1013,7 +1013,6 @@ int lustre_config_save(struct lustre_configs *conf,
 		if (status == CONFIG_NONE_LUSTRE) {
 			/* Not found Lustre plugin */
 			int start;
-			int finish;
 			char *lustre;
 			nomatch = regexec(&start_regex,
 					      line,
@@ -1022,7 +1021,6 @@ int lustre_config_save(struct lustre_configs *conf,
 					      0);
 			if (!nomatch) {
 				start = fields[1].rm_so;
-				finish = fields[1].rm_eo;
 				lustre = strcasestr(line + start, "lustre");
 				if (lustre != NULL) {
 					status = CONFIG_LUSTRE;
