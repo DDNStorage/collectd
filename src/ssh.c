@@ -41,8 +41,8 @@ struct ssh_configs {
 	void *context;
 	void *requester;
 	char *server_host;
-	char *server_name;
-	char *server_password;
+	char *user_name;
+	char *user_password;
 	char *zeromq_port;
 
 	/* this can be null */
@@ -323,16 +323,16 @@ static int ssh_userauth_connection(LIBSSH2_SESSION *session,
 	int rc;
 
 	while ((rc = libssh2_userauth_publickey_fromfile(session,
-		ssh_config_g->server_name,
+		ssh_config_g->user_name,
 		ssh_config_g->public_keyfile,
 		ssh_config_g->private_keyfile,
 		ssh_config_g->sshkey_passphrase)) == LIBSSH2_ERROR_EAGAIN);
 	if (rc == 0)
 		return 0;
-	if (!ssh_config_g->server_password)
+	if (!ssh_config_g->user_password)
 		return -EPERM;
-	while ((rc = libssh2_userauth_password(session, ssh_config_g->server_name,
-		ssh_config_g->server_password)) == LIBSSH2_ERROR_EAGAIN);
+	while ((rc = libssh2_userauth_password(session, ssh_config_g->user_name,
+		ssh_config_g->user_password)) == LIBSSH2_ERROR_EAGAIN);
 	if (rc == 0)
 		return 0;
 	return -EPERM;
@@ -593,7 +593,7 @@ static int ssh_plugin_init(void)
 		return -EINVAL;
 	ssh_config_g = (struct ssh_configs *)
 			lustre_get_private_data(ssh_config_gs);
-	if (!ssh_config_g->server_host || !ssh_config_g->server_name
+	if (!ssh_config_g->server_host || !ssh_config_g->user_name
 	    || !ssh_config_g->known_hosts) {
 		LERROR("ssh plugin: server_host,server name or knownhosts configs are missing");
 		return -EINVAL;
@@ -609,7 +609,7 @@ static int ssh_plugin_init(void)
 		return -EINVAL;
 	}
 	if (!ssh_config_g->public_keyfile && !ssh_config_g->private_keyfile
-	    && !ssh_config_g->server_password) {
+	    && !ssh_config_g->user_password) {
 		LERROR("ssh plugin: both password and keyfiles are missing");
 		return -EINVAL;
 	}
@@ -838,9 +838,9 @@ static int ssh_config_private(oconfig_item_t *ci,
 		if (ret)
 			LERROR("ssh plugin: invalid server host");
 		ssh_configs->server_host = value;
-	} else if (strcasecmp("ServerName", ci->key) == 0) {
-		free(ssh_configs->server_name);
-		ssh_configs->server_name = value;
+	} else if (strcasecmp("UserName", ci->key) == 0) {
+		free(ssh_configs->user_name);
+		ssh_configs->user_name = value;
 	} else if (strcasecmp("KnownhostsFile", ci->key) == 0) {
 		free(ssh_configs->known_hosts);
 		ssh_configs->known_hosts = value;
@@ -853,9 +853,9 @@ static int ssh_config_private(oconfig_item_t *ci,
 		free(ssh_configs->private_keyfile);
 		ssh_configs->private_keyfile = value;
 		ret = check_config_path(value);
-	} else if (strcasecmp("ServerPassword", ci->key) == 0) {
-		free(ssh_configs->server_password);
-		ssh_configs->server_password = value;
+	} else if (strcasecmp("UserPassword", ci->key) == 0) {
+		free(ssh_configs->user_password);
+		ssh_configs->user_password = value;
 	} else if (strcasecmp("SshKeyPassphrase", ci->key) == 0) {
 		free(ssh_configs->sshkey_passphrase);
 		ssh_configs->sshkey_passphrase = value;
@@ -889,11 +889,11 @@ static void ssh_config_fini(struct lustre_configs *lc)
 			pthread_kill(ssh_configs->bg_tid, SIGKILL);
 	}
 	free(ssh_configs->server_host);
-	free(ssh_configs->server_name);
+	free(ssh_configs->user_name);
 	free(ssh_configs->public_keyfile);
 	free(ssh_configs->private_keyfile);
 	free(ssh_configs->known_hosts);
-	free(ssh_configs->server_password);
+	free(ssh_configs->user_password);
 	free(ssh_configs->sshkey_passphrase);
 	free(ssh_configs->zeromq_port);
 }
