@@ -1541,9 +1541,6 @@ fi
 %if %{with_fscache}
 %{_libdir}/%{name}/fscache.so
 %endif
-%if %{with_gpfs}
-%{_libdir}/%{name}/gpfs.so
-%endif
 %if %{with_interface}
 %{_libdir}/%{name}/interface.so
 %endif
@@ -1558,10 +1555,6 @@ fi
 %endif
 %if %{with_logfile}
 %{_libdir}/%{name}/logfile.so
-%endif
-%if %{with_lustre}
-%{_bindir}/collectd-lustre
-%{_libdir}/%{name}/lustre.so
 %endif
 %if %{with_madwifi}
 %{_libdir}/%{name}/madwifi.so
@@ -1610,9 +1603,6 @@ fi
 %endif
 %if %{with_serial}
 %{_libdir}/%{name}/serial.so
-%endif
-%if %{with_stress}
-%{_libdir}/%{name}/stress.so
 %endif
 %if %{with_swap}
 %{_libdir}/%{name}/swap.so
@@ -1788,6 +1778,7 @@ fi
 
 %if %{with_lustre}
 %files lustre
+%{_bindir}/collectd-lustre
 %{_libdir}/%{name}/lustre.so
 %endif
 
