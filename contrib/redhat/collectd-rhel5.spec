@@ -1398,8 +1398,7 @@ rm -rf %{buildroot}
 %{__make} install DESTDIR=%{buildroot}
 %{__install} -Dp -m 0755 contrib/redhat/init.d-collectd %{buildroot}%{_initrddir}/collectd
 %{__install} -Dp -m0644 src/collectd.conf %{buildroot}%{_sysconfdir}/collectd.conf
-%{__install} -Dp -m0644 contrib/ddn/collectd.conf.mds %{buildroot}%{_sysconfdir}/collectd.conf.mds
-%{__install} -Dp -m0644 contrib/ddn/collectd.conf.oss %{buildroot}%{_sysconfdir}/collectd.conf.oss
+%{__install} -Dp -m0644 contrib/ddn/collectd.conf.lustre %{buildroot}%{_sysconfdir}/collectd.conf.lustre
 %{__install} -d %{buildroot}%{_sharedstatedir}/collectd/
 %{__install} -d %{buildroot}%{_sysconfdir}/collectd.d/
 
@@ -1468,8 +1467,7 @@ fi
 %files
 %doc AUTHORS COPYING ChangeLog README
 %config(noreplace) %{_sysconfdir}/collectd.conf
-%{_sysconfdir}/collectd.conf.mds
-%{_sysconfdir}/collectd.conf.oss
+%{_sysconfdir}/collectd.conf.lustre
 %{_initrddir}/collectd
 %{_sbindir}/collectd
 %{_bindir}/collectd-nagios
