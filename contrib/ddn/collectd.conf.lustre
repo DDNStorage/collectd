@@ -1,0 +1,95 @@
+#
+# collectd.conf for DDN LustreMon
+#
+
+Interval      1     
+
+WriteQueueLimitHigh 1000000
+WriteQueueLimitLow   800000
+
+LoadPlugin syslog
+<Plugin syslog>
+	#LogLevel info
+	LogLevel err
+</Plugin>
+
+LoadPlugin lustre
+<Plugin "lustre">
+  <Common>
+    DefinitionFile "/etc/lustre-ieel-2.5.xml"
+  </Common>
+# OST stats
+  <Item>
+    Type "ost_kbytestotal"
+    Query_interval 300
+  </Item>
+  <Item>
+    Type "ost_kbytesfree"
+    Query_interval 300
+  </Item>
+  <Item>
+    Type "ost_stats_write"
+  </Item>
+  <Item>
+    Type "ost_stats_read"
+  </Item>
+
+# MDT stats
+  <Item>
+    Type "mdt_filestotal"
+    Query_interval 300
+  </Item>
+  <Item>
+    Type "mdt_filesfree"
+    Query_interval 300
+  </Item>
+  <Item>
+    Type "md_stats_open"
+  </Item>
+  <Item>
+    Type "md_stats_close"
+  </Item>
+  <Item>
+    Type "md_stats_mknod"
+  </Item>
+  <Item>
+    Type "md_stats_unlink"
+  </Item>
+  <Item>
+    Type "md_stats_mkdir"
+  </Item>
+  <Item>
+    Type "md_stats_rmdir"
+  </Item>
+  <Item>
+    Type "md_stats_rename"
+  </Item>
+  <Item>
+    Type "md_stats_getattr"
+  </Item>
+  <Item>
+    Type "md_stats_setattr"
+  </Item>
+  <Item>
+    Type "md_stats_getxattr"
+  </Item>
+  <Item>
+    Type "md_stats_setxattr"
+  </Item>
+  <Item>
+    Type "md_stats_statfs"
+  </Item>
+  <Item>
+    Type "md_stats_sync"
+  </Item>
+</Plugin>
+
+loadPlugin "write_graphite"
+<Plugin "write_graphite">
+ <Carbon>
+   Host "172.21.66.181"
+   Port "2003"
+   Prefix "collectd."
+   Protocol "udp"
+ </Carbon>
+</Plugin>
