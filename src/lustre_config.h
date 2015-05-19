@@ -28,6 +28,7 @@
 #include "liboconfig/oconfig.h"
 
 #define MAX_NAME_LENGH 1024
+#define TYPE_NAME_LEN	64
 
 #define MAX_JOBSTAT_FIELD_LENGTH 32
 #define MAX_SUBMIT_STRING_LENGTH DATA_MAX_NAME_LEN
@@ -120,6 +121,9 @@ struct lustre_item_type {
 	struct list_head			  lit_active_linkage;
 	/* List of items */
 	struct list_head			  lit_items;
+	/* List of extends */
+	struct list_head			  lit_extends;
+	char					  lit_ext_tags[MAX_TSDB_TAGS_LENGTH + 1];
 	/* List of field types */
 	struct list_head			  lit_field_list;
 	/* Array of field types */
@@ -137,8 +141,36 @@ struct lustre_item_rule {
 	_Bool			 lir_regex_inited;
 	/* Linkage to item */
 	struct list_head	 lir_linkage;
-	/* Pointer to to item */
+	/* Pointer to item */
 	struct lustre_item	*lir_item;
+};
+
+struct lustre_item_type_extend_field {
+	/* Index of this field */
+	int			litef_index;
+	char			litef_name[MAX_NAME_LENGH + 1];
+	char			litef_value[MAX_NAME_LENGH + 1];
+	/* Linkage of item type extend field */
+	struct list_head	litef_linkage;
+	/* Pointer to item type extend */
+	struct lustre_item_type_extend *litef_ext;
+};
+
+struct lustre_item_type_extend {
+	/* Filed index of this extend in item type*/
+	int			lite_field_index;
+	regex_t			lite_regex;
+	char			lite_string[MAX_NAME_LENGH + 1];
+	char			lite_tags[MAX_TSDB_TAGS_LENGTH + 1];
+	_Bool			lite_regex_inited;
+	/* Number of field in list lite_fields*/
+	int			lite_field_number;
+	/* List of item type extend field */
+	struct list_head	lite_fields;
+	/* Linkage to item type extend */
+	struct list_head	lite_linkage;
+	/* Pointer to item type */
+	struct lustre_item_type	*lite_item_type;
 };
 
 struct lustre_item_filter {
@@ -165,6 +197,8 @@ struct lustre_item {
 struct lustre_item_data {
 	int			 lid_filed_number;
 	struct lustre_field	*lid_fields;
+	int			lid_ext_tags_used;
+	char			lid_ext_tags[MAX_TSDB_TAGS_LENGTH + 1];
 };
 
 struct lustre_subpath_field_type {
@@ -299,4 +333,6 @@ void lustre_item_rule_add(struct lustre_item *item,
 void lustre_item_rule_replace(struct lustre_item *item,
 			      struct lustre_item_rule *old,
 			      struct lustre_item_rule *new);
+struct lustre_item_type_extend_field *
+lustre_item_extend_field_find(struct lustre_item_type *type, const char *name);
 #endif /* LUSTRE_CONFIG_H */
