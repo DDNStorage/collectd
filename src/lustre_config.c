@@ -146,6 +146,31 @@ lustre_field_type_add(struct lustre_item_type *type,
 	return 0;
 }
 
+static void lustre_item_type_extend_free(struct lustre_item_type_extend *ext)
+{
+	struct lustre_item_type_extend_field *field, *f;
+
+	list_for_each_entry_safe(field, f, &ext->lite_fields, litef_linkage) {
+		list_del_init(&field->litef_linkage);
+		free(field);
+	}
+
+	if (ext->lite_regex_inited)
+		regfree(&ext->lite_regex);
+
+	free(ext);
+}
+
+static void lustre_item_type_extend_destroy(struct lustre_item_type *type)
+{
+	struct lustre_item_type_extend *ext, *n;
+
+	list_for_each_entry_safe(ext, n, &type->lit_extends, lite_linkage) {
+		list_del_init(&ext->lite_linkage);
+		lustre_item_type_extend_free(ext);
+	}
+}
+
 void lustre_item_type_free(struct lustre_item_type *type)
 {
 	struct lustre_item *item;
@@ -168,6 +193,8 @@ void lustre_item_type_free(struct lustre_item_type *type)
 		list_del_init(&field_type->lft_linkage);
 		lustre_field_type_free(field_type);
 	}
+	lustre_item_type_extend_destroy(type);
+
 	if (type->lit_field_array)
 		free(type->lit_field_array);
 	if (type->lit_flags & LUSTRE_ITEM_FLAG_PATTERN)
@@ -188,6 +215,7 @@ struct lustre_item_type *lustre_item_type_alloc(void)
 	}
 	INIT_LIST_HEAD(&type->lit_linkage);
 	INIT_LIST_HEAD(&type->lit_items);
+	INIT_LIST_HEAD(&type->lit_extends);
 	INIT_LIST_HEAD(&type->lit_field_list);
 	INIT_LIST_HEAD(&type->lit_active_linkage);
 	return type;
@@ -240,6 +268,23 @@ static int lustre_item_rule_match(struct lustre_field *fields,
 		return 1;
 	}
 	return 0;
+}
+
+struct lustre_item_type_extend_field *
+lustre_item_extend_field_find(struct lustre_item_type *type,
+		const char *name)
+{
+	struct lustre_item_type_extend *ext;
+	struct lustre_item_type_extend_field *field;
+
+	list_for_each_entry(ext, &type->lit_extends, lite_linkage) {
+		list_for_each_entry(field, &ext->lite_fields, litef_linkage) {
+			if (strcmp(field->litef_name, name) == 0)
+				return field;
+		}
+	}
+
+	return NULL;
 }
 
 static int lustre_item_match_one(struct lustre_field *fields,
@@ -570,6 +615,192 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 	return (status);
 }
 
+void lustre_item_type_extend_field_add(struct lustre_item_type_extend *ext,
+		struct lustre_item_type_extend_field *ext_field)
+{
+	list_add_tail(&ext_field->litef_linkage, &ext->lite_fields);
+	ext_field->litef_ext = ext;
+	ext->lite_field_number++;
+}
+
+static int lustre_config_extended_field(const oconfig_item_t *ci,
+				struct lustre_item_type_extend *ext,
+				struct lustre_item_type *type)
+{
+	struct lustre_item_type_extend_field *ext_field = NULL;
+	struct lustre_item_type_extend_field *field = NULL;
+	char *value;
+	int i;
+	int status = 0;
+
+	ext_field = calloc(1, sizeof (struct lustre_item_type_extend_field));
+	if (ext_field == NULL) {
+		LERROR("Extended field parse: out of memory");
+		return -ENOMEM;
+	}
+
+	INIT_LIST_HEAD(&ext_field->litef_linkage);
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+		if (strcasecmp ("Index", child->key) == 0) {
+			status = lustre_config_get_int(child,
+						&ext_field->litef_index);
+			if (status) {
+				LERROR("Extended field: failed to get value"
+					" for \"%s\"", child->key);
+				break;
+			}
+			if (ext_field->litef_index - 1 !=
+				ext->lite_field_number) {
+				LERROR("Extended field: invalid Index: %d",
+				       ext_field->litef_index);
+				status = -EINVAL;
+				break;
+			}
+		} else if (strcasecmp("Name", child->key) == 0) {
+			field = lustre_item_extend_field_find(type, child->key);
+			if (field != NULL) {
+				LERROR("Extended field: field \"%s\" already"
+				       " existed", child->key);
+				status = -EINVAL;
+				break;
+			}
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Extended field: failed to get value"
+					" for \"%s\"", child->key);
+				break;
+			}
+			if (strlen(value) >= sizeof(ext_field->litef_name)) {
+				LERROR("Extended field: length of name \"%s\""
+				       " overflow, upper limit is: %lu",
+				        value,
+					sizeof(ext_field->litef_name) - 1);
+				free(value);
+				break;
+			}
+			strcpy(ext_field->litef_name, value);
+			free(value);
+		} else {
+			LERROR("Extended field: unknow value \"%s\"",
+					child->key);
+			break;
+		}
+	}
+
+	if (status) {
+		free(ext_field);
+	} else {
+		lustre_item_type_extend_field_add(ext, ext_field);
+	}
+
+	return status;
+}
+
+static void lustre_item_type_extend_add(struct lustre_item_type *type,
+		struct lustre_item_type_extend *ext)
+{
+	list_add_tail(&ext->lite_linkage, &type->lit_extends);
+	ext->lite_item_type = type;
+}
+
+static int lustre_config_extended_parse(const oconfig_item_t *ci,
+				struct lustre_item_type *type)
+{
+	int i, j;
+	int status = 0;
+	struct lustre_item_type_extend *extend;
+	char *value;
+	int found;
+
+	extend = calloc(1, sizeof (struct lustre_item_type_extend));
+	if (extend == NULL) {
+		LERROR("Extended parse: not enough memory");
+		return -ENOMEM;
+	}
+
+	INIT_LIST_HEAD(&extend->lite_fields);
+	INIT_LIST_HEAD(&extend->lite_linkage);
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+		if (strcasecmp ("Field", child->key) == 0) {
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Extend parse: failed to get value"
+				       " of \"%s\"", child->key);
+				break;
+			}
+
+			found = 0;
+			for (j = 1; j <= type->lit_field_number; j++) {
+				if (strcmp(type->lit_field_array[j]->lft_name,
+					   value) == 0) {
+					found = 1;
+					extend->lite_field_index = j;
+					break;
+				}
+			}
+
+			if (!found) {
+				LERROR("Extended parse: failed to find"
+				       " extend of \"%s\"", value);
+				status = -EINVAL;
+				free(value);
+				break;
+			}
+
+			free(value);
+		} else if (strcasecmp("Pattern", child->key) == 0) {
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Extended parse: failed to get value"
+				       " for \"%s\"", child->key);
+				break;
+			}
+			if (strlen(value) > MAX_NAME_LENGH) {
+				LERROR("Extended parse: value \"%s\" is too"
+				       "long", value);
+				status = -EINVAL;
+				free(value);
+				break;
+			}
+			strcpy(extend->lite_string, value);
+			status = lustre_compile_regex(&extend->lite_regex,
+						      value);
+			free(value);
+			if (status) {
+				LERROR("Extended parse: failed to compile"
+				       " regex");
+				break;
+			}
+		} else if (strcasecmp("ExtendedField", child->key) == 0) {
+			status = lustre_config_extended_field(child, extend, type);
+			if (status) {
+				LERROR("Extended parse: failed to parse"
+				       " extended field");
+				break;
+			}
+		} else {
+			LERROR("Extended parse: invalid key \"%s\"",
+			       child->key);
+			status = -EINVAL;
+		}
+	}
+
+	if (status) {
+		lustre_item_type_extend_free(extend);
+	} else {
+		lustre_item_type_extend_add(type, extend);
+	}
+
+	return status;
+}
+
 static int lustre_config_item_filter(const oconfig_item_t *ci,
 				struct lustre_item *item)
 {
@@ -770,6 +1001,84 @@ static int lustre_config_item(const oconfig_item_t *ci,
 	return (status);
 }
 
+static int lustre_config_item_type(const oconfig_item_t *ci,
+			      struct lustre_configs *conf)
+{
+	int i;
+	int status = 0;
+	struct lustre_item_type *type = NULL;
+	char *value;
+
+	if (!conf->lc_definition.ld_inited) {
+		LERROR("ItemType: definition is not inited yet");
+		return -1;
+	}
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+		if (strcasecmp("Type", child->key) == 0) {
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("ItemType: failed to get value for"
+				       " \"%s\"", child->key);
+				break;
+			}
+
+			type = lustre_item_type_find(
+					conf->lc_definition.ld_root,
+					value);
+			if (type == NULL) {
+				LERROR("ItemType: failed to get type"
+				       " for \"%s\"", value);
+				status = -1;
+				free(value);
+				break;
+			}
+			free(value);
+		} else if (strcasecmp("ExtendedParse", child->key) == 0) {
+			if (type == NULL) {
+				LERROR("ItemType: wrong config file"
+				       " need to specify item type");
+				status = -1;
+				break;
+			}
+
+			status = lustre_config_extended_parse(child, type);
+			if (status) {
+				LERROR("ItemType: failed to do extented parse");
+				break;
+			}
+		} else if (strcasecmp("TsdbTags", child->key) == 0) {
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("ItemType: failed to get value"
+				       " for \"%s\"", child->key);
+				break;
+			}
+
+			if (strlen(value) >= sizeof(type->lit_ext_tags)) {
+				LERROR("ItemType: length of \"%s\" is"
+				       " overflow, upper limit is: %lu",
+				       value,
+				       sizeof(type->lit_ext_tags) - 1);
+				status = -EINVAL;
+				free(value);
+				break;
+			}
+			strcpy(type->lit_ext_tags, value);
+			free(value);
+		}
+	}
+
+	if (status && type != NULL) {
+		lustre_item_type_extend_destroy(type);
+	}
+
+	return status;
+}
+
 void lustre_config_free(struct lustre_configs *conf)
 {
 	assert(conf);
@@ -816,6 +1125,8 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci,
 			status = lustre_config_common(child, config);
 		} else if (strcasecmp ("Item", child->key) == 0) {
 			status = lustre_config_item(child, config);
+		} else if (strcasecmp ("ItemType", child->key) == 0) {
+			status = lustre_config_item_type(child, config);
 		} else {
 			LERROR("Lustre: Ignoring unknown "
 					"configuration option: \"%s\"\n",

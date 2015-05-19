@@ -158,7 +158,6 @@ static int lustre_key_field_get(char *field, size_t size, const char *name)
 	return 0;
 }
 
-#define TYPE_NAME_LEN	64
 static int lustre_submit_option_get(struct lustre_submit_option *option,
 				    struct list_head *path_head,
 				    struct lustre_field_type **field_types,
@@ -301,7 +300,9 @@ static int lustre_submit(struct lustre_submit *submit,
 			 struct lustre_field *fields,
 			 int content_field_number,
 			 int content_index,
-			 uint64_t value)
+			 uint64_t value,
+			 const char *ext_tsdb_tags,
+			 int ext_tags_used)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
@@ -382,6 +383,21 @@ static int lustre_submit(struct lustre_submit *submit,
 		return status;
 	}
 
+	if (ext_tags_used) {
+		if (strlen(tsdb_tags) + strlen(ext_tsdb_tags) + 1 >=
+		    MAX_TSDB_TAGS_LENGTH) {
+			ERROR("submit: tsdb_tags too long");
+			return -EINVAL;
+		}
+
+		if (strlen(tsdb_tags) > 0) {
+			strcat(tsdb_tags, " ");
+			strcat(tsdb_tags, ext_tsdb_tags);
+		} else {
+			strncpy(tsdb_tags, ext_tsdb_tags,
+				MAX_TSDB_TAGS_LENGTH - 1);
+		}
+	}
 	lustre_instance_submit(host, plugin, plugin_instance,
 			       type, type_instance,
 			       tsdb_name, tsdb_tags,
@@ -405,7 +421,9 @@ static int lustre_data_submit(struct lustre_item_type *type,
 				      data->lid_fields,
 				      type->lit_field_number,
 				      i,
-				      data->lid_fields[i].lf_value);
+				      data->lid_fields[i].lf_value,
+				      data->lid_ext_tags,
+				      data->lid_ext_tags_used);
 	}
 
 	return 0;
@@ -449,6 +467,176 @@ static void lustre_item_data_free(struct lustre_item_data *data)
 {
 	free(data->lid_fields);
 	free(data);
+}
+
+static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
+		struct lustre_item_data *data)
+{
+	int status = 0;
+	regmatch_t matched_fields[3];
+	char *pointer = itype->lit_ext_tags;
+	char *match_value = NULL;
+	int max_size = sizeof(itype->lit_ext_tags) - 1;
+	char *value_pointer = data->lid_ext_tags;
+	char type[TYPE_NAME_LEN + 1];
+	char name[TYPE_NAME_LEN + 1];
+	struct lustre_item_type_extend_field *ext_field;
+	const char *pattern = "\\$\\{(extendfield):([^}]+)\\}";
+	static regex_t regex;
+	static int regex_inited = 0;
+	int i;
+
+	if (regex_inited == 0) {
+		regex_inited = 1;
+		status = lustre_compile_regex(&regex, pattern);
+		assert(status == 0);
+	}
+
+	while (1) {
+		status = regexec(&regex,
+				 pointer,
+				 3,
+				 matched_fields, 0);
+		if (status) {
+			/* No match */
+			if (strlen(pointer) > max_size) {
+				status = -EINVAL;
+				break;
+			}
+			strncpy(value_pointer, pointer, max_size);
+			value_pointer += strlen(pointer);
+			max_size -= strlen(pointer);
+			status = 0;
+			break;
+		}
+		for (i = 0; i <= 2; i++) {
+			int start;
+			int finish;
+			if (matched_fields[i].rm_so == -1)
+				break;
+			start = matched_fields[i].rm_so +
+				(pointer - itype->lit_ext_tags);
+			finish = matched_fields[i].rm_eo +
+				(pointer - itype->lit_ext_tags);
+
+			if ((i != 0) && ((finish - start) > TYPE_NAME_LEN)) {
+				status = -EINVAL;
+				LERROR("%s length: %d is too long",
+				       (i == 1) ? "type" : "name",
+				       finish - start);
+				goto out;
+			}
+
+			if (i == 1) {
+				strncpy(type, itype->lit_ext_tags + start,
+					finish - start);
+				type[finish - start] = '\0';
+			} else if (i == 2) {
+				strncpy(name, itype->lit_ext_tags + start,
+					finish - start);
+				name[finish - start] = '\0';
+			}
+		}
+
+		if (strcmp(type, "extendfield") == 0) {
+			ext_field = lustre_item_extend_field_find(itype, name);
+			if (ext_field == NULL) {
+				LERROR("failed to get extend field for %s", name);
+				break;
+			}
+			match_value = ext_field->litef_value;
+		} else {
+			LERROR("unknown type \"%s\"", type);
+			status = -EINVAL;
+			break;
+		}
+
+		if (strlen(match_value) + matched_fields[0].rm_so > max_size) {
+			LERROR("extend tsdb tags overflows: %d", max_size);
+			status = -EINVAL;
+			break;
+		}
+
+		if (matched_fields[0].rm_so > 0) {
+			strncpy(value_pointer, pointer,
+				matched_fields[0].rm_so);
+			value_pointer += matched_fields[0].rm_so;
+			value_pointer[0] = '\0';
+			max_size -= matched_fields[0].rm_so;
+		}
+
+		strncpy(value_pointer, match_value, max_size);
+		value_pointer += strlen(match_value);
+		max_size -= strlen(match_value);
+		match_value = NULL;
+
+		pointer += matched_fields[0].rm_eo;
+	}
+
+	LINFO("status: %d tsdb tags: %s", status, data->lid_ext_tags);
+out:
+	return status;
+}
+
+static int lustre_item_extend_parse(struct lustre_item_type *type,
+			     struct lustre_item_data *data)
+{
+	struct lustre_item_type_extend *ext;
+	struct lustre_item_type_extend_field *ext_field;
+	regmatch_t *match_fields;
+	char *pos = NULL;
+	int len;
+	int status;
+
+	if (list_empty(&type->lit_extends))
+		return 0;
+
+	list_for_each_entry(ext, &type->lit_extends, lite_linkage) {
+		assert(ext->lite_field_index <= type->lit_field_number);
+		match_fields = calloc(ext->lite_field_number + 1,
+				      sizeof (regmatch_t));
+		if (match_fields == NULL) {
+			LERROR("Extended parse: not enough memory");
+			return -ENOMEM;
+		}
+		status = regexec(&ext->lite_regex,
+				 data->lid_fields[ext->lite_field_index].lf_string,
+				 ext->lite_field_number + 1,
+				 match_fields,
+				 0);
+
+		if (status == REG_NOMATCH) {
+			LINFO("Extended parse: failed to parse field: \"%s\"",
+			    data->lid_fields[ext->lite_field_index].lf_string);
+			free(match_fields);
+			status = -EINVAL;
+			goto out;
+		}
+
+		list_for_each_entry(ext_field, &ext->lite_fields, litef_linkage) {
+			assert(ext_field->litef_index <= ext->lite_field_number);
+
+			pos = data->lid_fields[ext->lite_field_index].lf_string +
+				match_fields[ext_field->litef_index].rm_so;
+			len = match_fields[ext_field->litef_index].rm_eo -
+				match_fields[ext_field->litef_index].rm_so;
+
+			strncpy(ext_field->litef_value, pos, len);
+			ext_field->litef_value[len] = '\0';
+		}
+
+		free(match_fields);
+		match_fields = NULL;
+	}
+
+	status = lustre_item_extend_form_tsdbtags(type, data);
+	if (status)
+		return status;
+
+	data->lid_ext_tags_used = 1;
+
+out:
+	return status;
 }
 
 static int _lustre_parse(struct lustre_item_type *type,
@@ -531,7 +719,12 @@ static int _lustre_parse(struct lustre_item_type *type,
 		if (lustre_item_match(data->lid_fields,
 				      type->lit_field_number,
 				      type)) {
-			lustre_data_submit(type, path_head, data);
+			status = lustre_item_extend_parse(type, data);
+			if (status == 0) {
+				lustre_data_submit(type, path_head, data);
+			} else {
+				LINFO("Parse: failed to do extended parse");
+			}
 		}
 		previous += fields[0].rm_eo;
 	}
