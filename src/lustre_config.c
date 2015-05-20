@@ -797,7 +797,11 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci,
 		LERROR("not enough memory\n");
 		return NULL;
 	}
-	config->lc_definition.ld_private_definition = *ld_private_definition;
+
+	if (ld_private_definition)
+		config->lc_definition.ld_private_definition =
+			*ld_private_definition;
+
 	if (ld_private_definition && ld_private_definition->ld_private_init) {
 		status = ld_private_definition->ld_private_init(config);
 		if (status < 0)
