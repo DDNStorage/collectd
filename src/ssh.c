@@ -266,6 +266,10 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 	int msg_len = 0;
 	int more;
 	size_t more_size = sizeof(more);
+	char *ptr;
+	int new_len;
+	int data_len;
+
 	if (*buf == NULL) {
 		*buf = calloc(1, *len);
 		if (!*buf)
@@ -286,20 +290,24 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 		if (ret < 0)
 			goto free_mem;
 
-		msg_len += zmq_msg_size(request);
+		data_len = zmq_msg_size(request);
+		msg_len += data_len;
 		/* keep more space for later use */
-		if (*len < msg_len + 5) {
-			*buf = realloc(*buf, msg_len * 2);
-			if (!*buf) {
+		new_len = *len;
+		while (new_len < msg_len + 1)
+			new_len *= 2;
+		if (new_len > *len) {
+			ptr = realloc(*buf, new_len);
+			if (!ptr) {
 				ret = -ENOMEM;
 				goto free_mem;
 			}
-			memset(*buf + *len, 0, msg_len * 2 - *len);
-			*len = msg_len * 2;
+			*buf = ptr;
+			memset(*buf + *len, 0, new_len - *len);
+			*len = new_len;
 		}
-		memcpy(*buf + msg_len - zmq_msg_size(request),
-			(char *)zmq_msg_data(request),
-			zmq_msg_size(request));
+		memcpy(*buf + msg_len - data_len,
+			(char *)zmq_msg_data(request), data_len);
 		ret = zmq_getsockopt(responder, ZMQ_RCVMORE, &more,
 				     &more_size);
 		if (ret || !more)
