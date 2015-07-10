@@ -310,13 +310,16 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 			(char *)zmq_msg_data(request), data_len);
 		ret = zmq_getsockopt(responder, ZMQ_RCVMORE, &more,
 				     &more_size);
-		if (ret || !more)
-			goto close_req;
+		if (ret < 0) {
+			msg_len = ret;
+			break;
+		} else if (!more) {
+			break;
+		}
 		zmq_msg_close(request);
 	}
-close_req:
 	zmq_msg_close(request);
-	return 0;
+	return msg_len;
 free_mem:
 	free(*buf);
 	*buf = NULL;
@@ -746,6 +749,7 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size)
 		ret = -ENOMEM;
 		goto failed;
 	}
+	*data_size = ret;
 	ret = 0;
 failed:
 	return ret;
