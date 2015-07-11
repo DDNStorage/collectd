@@ -287,8 +287,10 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 #else
 		ret = zmq_recv(responder, request, 0);
 #endif
-		if (ret < 0)
+		if (ret < 0) {
+			zmq_msg_close(request);
 			goto free_mem;
+		}
 
 		data_len = zmq_msg_size(request);
 		msg_len += data_len;
@@ -300,6 +302,7 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 			ptr = realloc(*buf, new_len);
 			if (!ptr) {
 				ret = -ENOMEM;
+				zmq_msg_close(request);
 				goto free_mem;
 			}
 			*buf = ptr;
@@ -310,15 +313,14 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 			(char *)zmq_msg_data(request), data_len);
 		ret = zmq_getsockopt(responder, ZMQ_RCVMORE, &more,
 				     &more_size);
+		zmq_msg_close(request);
 		if (ret < 0) {
 			msg_len = ret;
-			break;
+			goto free_mem;
 		} else if (!more) {
 			break;
 		}
-		zmq_msg_close(request);
 	}
-	zmq_msg_close(request);
 	return msg_len;
 free_mem:
 	free(*buf);
