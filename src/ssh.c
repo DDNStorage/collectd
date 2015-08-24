@@ -23,6 +23,7 @@
 #include <ctype.h>
 #include <pwd.h>
 #include <fcntl.h>
+#include <poll.h>
 
 static pthread_mutex_t ssh_lock;
 static pthread_cond_t  cond_t;
@@ -135,8 +136,8 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
 	fd_set *writefd = NULL;
 	fd_set *readfd = NULL;
 
-	timeout.tv_sec = 10;
-	timeout.tv_usec = 0;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 500000;
 
 	FD_ZERO(&fd);
 	FD_SET(socket_fd, &fd);
@@ -152,75 +153,107 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
 	return rc;
 }
 
-static int execute_remote_processes(LIBSSH2_SESSION *session, int sock,
-				    const char *command, void **result,
-				    int *result_len)
+static int execute_remote_processes(LIBSSH2_SESSION *session,
+				    LIBSSH2_CHANNEL *channel,
+				    int sock, char *command,
+				    int command_len,
+				    void **result, int *result_len,
+				    int extra_len)
 {
-	int rc, rc1;
+	int rc;
 	char buffer[256];
 	unsigned int nbytes = 0;
-	LIBSSH2_CHANNEL *channel;
+	unsigned int pre_nbytes = 0;
 	char *p;
+	const char numfds = 1;
+	struct pollfd pfds[numfds];
+	int len;
 
-	memset(*result, 0, *result_len);
-	while ((channel = libssh2_channel_open_session(session)) == NULL
-		&& libssh2_session_last_error(session, NULL, NULL, 0)
-			== LIBSSH2_ERROR_EAGAIN)
-		waitsocket(sock, session);
-	if (!channel)
-		return -errno;
+	/* Prepare to use poll */
+	memset(pfds, 0, sizeof(struct pollfd) * numfds);
+	pfds[0].fd = sock;
+	pfds[0].events = POLLIN;
+	pfds[0].revents = 0;
 
-	while ((rc = libssh2_channel_exec(channel, command))
-			== LIBSSH2_ERROR_EAGAIN)
-		waitsocket(sock, session);
-	if (rc) {
-		rc = -errno;
-		goto failed;
-	}
+	len = strlen(command);
+	/* adjust command format */
+	command[len] = '\n';
 
-	/* loop until we block */
+	nbytes = 0;
 	for ( ; ; ) {
 		do {
-			if (nbytes >= *result_len) {
-				p = realloc(*result, nbytes + *result_len);
-				if (!p) {
-					rc = -ENOMEM;
-					break;
-				}
-				*result_len += *result_len;
-				*result = p;
-			}
+			rc = libssh2_channel_write(channel, command + nbytes,
+						   strlen(command) - nbytes);
+			if (rc > 0)
+				nbytes += rc;
+		} while (rc > 0 && nbytes < strlen(command));
+		if (rc == LIBSSH2_ERROR_EAGAIN && pre_nbytes != nbytes)
+			waitsocket(sock, session);
+		else
+			break;
+		pre_nbytes = nbytes;
+	}
+	if (rc < 0 && rc != LIBSSH2_ERROR_EAGAIN) {
+		LERROR("ssh plugin: libssh2_channel_write error: %s",
+			strerror(errno));
+		return rc;
+	}
+
+	/* Polling on socket and stdin while we are
+	 * not ready to read from it */
+	rc = poll(pfds, numfds, -1);
+	if (rc < 0)
+		return rc;
+
+	if (!pfds[0].revents & POLLIN)
+		return 0;
+
+	memset(*result, 0, *result_len);
+	nbytes = 0;
+	for ( ; ; ) {
+		/* loop until we block */
+		do {
+			memset(buffer, 0, sizeof(buffer));
 			rc = libssh2_channel_read(channel, buffer,
 						  sizeof(buffer));
+			if (rc > 0 && nbytes + rc >= *result_len) {
+				*result_len += *result_len;
+				p = realloc(*result, *result_len);
+				if (!p)
+					return -ENOMEM;
+				*result = p;
+			}
 			if (rc > 0) {
 				memcpy((char *)(*result) + nbytes,
 					buffer, rc);
 				nbytes += rc;
 			}
 		} while (rc > 0);
-		if (rc == LIBSSH2_ERROR_EAGAIN)
+		if (rc < 0 && rc != LIBSSH2_ERROR_EAGAIN) {
+			LERROR("ssh plugin: libssh2_channel_read error: %s",
+				strerror(errno));
+			return rc;
+		}
+		if (rc == LIBSSH2_ERROR_EAGAIN && pre_nbytes != nbytes)
 			waitsocket(sock, session);
 		else
 			break;
+		pre_nbytes = nbytes;
 	}
-	/*
-	 * Whatever commands using here(sleep() for example)
-	 * Nothing output, we think it as an error.
-	 */
-	if (nbytes == 0) {
-		if (errno)
-			rc = -errno;
-		else
-			rc = -EIO;
+	/* filter output here */
+	len = strlen(command) + 1;
+	if (extra_len && nbytes > len + extra_len) {
+		/* clear command parts */
+		memmove(*result, *result + len, nbytes - len);
+		memset(*result + nbytes - len, 0, len);
+
+		/* clear end string like '[localhost@build]$' */
+		memmove(*result, *result, nbytes - len - extra_len);
+		memset(*result + nbytes - len - extra_len, 0, extra_len);
+		return nbytes - len - extra_len;
 	}
-failed:
-	while ((rc1 = libssh2_channel_close(channel))
-			== LIBSSH2_ERROR_EAGAIN)
-		waitsocket(sock, session);
-	libssh2_channel_free(channel);
-	if (!rc)
-		rc = rc1;
-	return rc;
+	memset(*result, 0, *result_len);
+	return nbytes;
 }
 
 static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
@@ -251,7 +284,8 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 			goto free_mem;
 
 		msg_len += zmq_msg_size(request);
-		if (*len < msg_len) {
+		/* keep more space for later use */
+		if (*len < msg_len + 5) {
 			*buf = realloc(*buf, msg_len * 2);
 			if (!*buf) {
 				ret = -ENOMEM;
@@ -322,7 +356,13 @@ static void *ssh_connection_thread(void *arg)
 	int sock;
 	struct sockaddr_in sin;
 	LIBSSH2_SESSION *session;
+	LIBSSH2_CHANNEL *channel = NULL;
 	int result_len = SSH_RESULTS_BUFSIZE;
+	int extra_len = 0;
+
+	receive_buf = calloc(receive_buf_len, 1);
+	if (!receive_buf)
+		return NULL;
 
 	snprintf(str, SSH_BUFSIZE, "tcp://*:%s", ssh_config_g->zeromq_port);
 	rc = libssh2_init(0);
@@ -385,6 +425,7 @@ static void *ssh_connection_thread(void *arg)
 			rc);
 		goto free_result;
 	}
+
 	/* we need keep ssh connection and start a zeromq server here. */
 #ifdef HAVE_ZMQ_NEW_VER
 	context = zmq_ctx_new();
@@ -396,6 +437,41 @@ static void *ssh_connection_thread(void *arg)
 			strerror(errno));
 		goto free_result;
 	}
+
+	/* request a shell */
+	while ((channel = libssh2_channel_open_session(session)) == NULL
+		&& libssh2_session_last_error(session, NULL, NULL, 0)
+			== LIBSSH2_ERROR_EAGAIN)
+		waitsocket(sock, session);
+	if (!channel) {
+		LERROR("ssh plugin: libssh2_channel_open_session failed: %s",
+			strerror(errno));
+		goto free_result;
+	}
+	/* request a terminal with 'vanilla' terminal emulation */
+	do {
+		rc = libssh2_channel_request_pty(channel, "vanilla");
+		if (rc == LIBSSH2_ERROR_EAGAIN)
+			waitsocket(sock, session);
+	} while (rc == LIBSSH2_ERROR_EAGAIN);
+	if (rc) {
+		LERROR("ssh plugin: rc: %d, failed to request ptyn: %s",
+			rc, strerror(errno));
+		goto free_result;
+	}
+
+	/* open a shell on that pty */
+	do {
+		rc = libssh2_channel_shell(channel);
+		if (rc == LIBSSH2_ERROR_EAGAIN)
+			waitsocket(sock, session);
+	} while (rc == LIBSSH2_ERROR_EAGAIN);
+	if (rc) {
+		LERROR("ssh plugin: failed to request shell on allocated pty: %s",
+			strerror(errno));
+		goto free_result;
+	}
+
 	responder = zmq_socket(context, ZMQ_REP);
 	if (!responder) {
 		LERROR("ssh plugin: failed to create socket, %s",
@@ -413,6 +489,18 @@ static void *ssh_connection_thread(void *arg)
 	pthread_cond_signal(&cond_t);
 	pthread_mutex_unlock(&ssh_lock);
 
+	/* pre-run to ignore login messages */
+	rc = execute_remote_processes(session, channel, sock, receive_buf,
+				      receive_buf_len, &result, &result_len, 0);
+	if (rc < 0)
+		LERROR("ssh plugin: failed to pre-run null command");
+
+	/* calculate extra len here */
+	rc = execute_remote_processes(session, channel, sock, receive_buf,
+				      receive_buf_len, &result, &result_len, 0);
+	if (rc > 0)
+		extra_len = rc / 2;
+
 	while (1) {
 		/* Step 1: start a zeromq demon to listen request */
 		rc = zmq_msg_recv_once(&request, responder, 0,
@@ -425,15 +513,17 @@ static void *ssh_connection_thread(void *arg)
 		/* Step 2: Filter listening request */
 
 		/* Step 3: execute remote process */
-		rc = execute_remote_processes(session, sock, receive_buf,
-					      &result, &result_len);
-		if (rc) {
+		rc = execute_remote_processes(session, channel, sock,
+					      receive_buf, receive_buf_len,
+					      &result, &result_len, extra_len);
+		if (rc < 0) {
 			LERROR("ssh plugin: failed to execute remote command, %s", receive_buf);
 			/* if we failed here, we need let sender know we failed here */
 			memcpy(result, ERROR_FORMAT, strlen(ERROR_FORMAT));
 			strncat(result, strerror(-rc),
 				result_len - strlen(ERROR_FORMAT));
 		}
+
 		/* Step 4: return results to collectd */
 		zmq_msg_init_size(&reply, result_len);
 		memset(zmq_msg_data(&reply), 0, result_len);
@@ -464,6 +554,12 @@ term_zmq:
 #endif
 free_result:
 	free(result);
+	if (channel) {
+		while ((rc = libssh2_channel_close(channel))
+				== LIBSSH2_ERROR_EAGAIN)
+			waitsocket(sock, session);
+		libssh2_channel_free(channel);
+	}
 disconnect_session:
 	libssh2_session_disconnect(session, NULL);
 free_session:
