@@ -24,6 +24,8 @@
 #include <pwd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 static pthread_mutex_t ssh_lock;
 static pthread_cond_t  cond_t;
@@ -34,6 +36,7 @@ struct lustre_configs *ssh_config_gs;
 #define SSH_RESULTS_BUFSIZE 4096
 #define SSH_BUFSIZE	50
 #define MAX_PATH_LENGTH	4096
+#define MAX_IP_ADDRESS_LENGTH 128
 #define ERROR_FORMAT ("ERROR: FAILED TO EXECUTE REMOTE COMMAND: ")
 
 struct ssh_configs {
@@ -813,6 +816,25 @@ static int ssh_config_init(struct lustre_configs *lc)
 	return 0;
 }
 
+static int host2ip(const char *host, char **ip)
+{
+	struct hostent *he;
+	struct in_addr ip_addr;
+	char *IP;
+
+	IP = calloc(1, MAX_IP_ADDRESS_LENGTH);
+	if (!IP)
+		return -ENOMEM;
+	he = gethostbyname(host);
+	if (!he)
+		return -h_errno;
+	memcpy(&ip_addr, he->h_addr_list[0], 4);
+	inet_ntop(AF_INET, &ip_addr,
+		  IP, MAX_IP_ADDRESS_LENGTH);
+	*ip = IP;
+	return 0;
+}
+
 static int ssh_config_private(oconfig_item_t *ci,
 			      struct lustre_configs *conf)
 {
@@ -828,16 +850,21 @@ static int ssh_config_private(oconfig_item_t *ci,
 	}
 	if (strcasecmp("ServerHost", ci->key) == 0) {
 		free(ssh_configs->server_host);
+		ret = check_server_host(value);
+		if (!ret)
+			ret = host2ip(value, &ssh_configs->server_host);
 		/*
 		 * we don't free @value in error here, let it
 		 * be handled by ssh_config_fini(), otherwise
 		 * we need assign null to avoid double free in
 		 * ssh_config_fini().
 		 */
-		ret = check_server_host(value);
-		if (ret)
+		if (ret) {
+			ssh_configs->server_host = value;
 			LERROR("ssh plugin: invalid server host");
-		ssh_configs->server_host = value;
+		} else {
+			free(value);
+		}
 	} else if (strcasecmp("UserName", ci->key) == 0) {
 		free(ssh_configs->user_name);
 		ssh_configs->user_name = value;
