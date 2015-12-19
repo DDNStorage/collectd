@@ -183,6 +183,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 	command[len] = '\n';
 
 	nbytes = 0;
+	memset(*result, 0, *result_len);
 	for ( ; ; ) {
 		do {
 			rc = libssh2_channel_write(channel, command + nbytes,
@@ -211,8 +212,8 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 	if (!pfds[0].revents & POLLIN)
 		return 0;
 
-	memset(*result, 0, *result_len);
 	nbytes = 0;
+	pre_nbytes = 0;
 	for ( ; ; ) {
 		/* loop until we block */
 		do {
@@ -280,8 +281,10 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 
 	while (1) {
 		ret = zmq_msg_init(request);
-		if (ret < 0)
-			break;
+		if (ret < 0) {
+			LERROR("ssh plugin: zmq_msg_init failed");
+			goto free_mem;
+		}
 #ifdef HAVE_ZMQ_NEW_VER
 		ret = zmq_msg_recv(request, responder, 0);
 #else
@@ -289,6 +292,7 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 #endif
 		if (ret < 0) {
 			zmq_msg_close(request);
+			LERROR("ssh plugin: zmq_msg_recv failed");
 			goto free_mem;
 		}
 
@@ -315,6 +319,7 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 				     &more_size);
 		zmq_msg_close(request);
 		if (ret < 0) {
+			LERROR("ssh plugin: zmq_getsockopt failed");
 			msg_len = ret;
 			goto free_mem;
 		} else if (!more) {
@@ -354,6 +359,60 @@ static int ssh_userauth_connection(LIBSSH2_SESSION *session,
 	return -EPERM;
 }
 
+static void exit_client_zmq_connection(struct ssh_configs *ssh_configs)
+{
+	if (ssh_configs->requester) {
+		zmq_close(ssh_configs->requester);
+		ssh_configs->requester = NULL;
+	}
+	if (ssh_configs->context) {
+#ifdef HAVE_ZMQ_NEW_VER
+		zmq_ctx_destroy(ssh_configs->context);
+#else
+		zmq_term(ssh_configs->context);
+#endif
+		ssh_configs->context = NULL;
+	}
+}
+
+
+static int init_client_zmq_connection(struct ssh_configs *ssh_config_g)
+{
+	int ret;
+	char str[SSH_BUFSIZE];
+
+	/* init zeromq client here */
+#ifdef HAVE_ZMQ_NEW_VER
+	ssh_config_g->context = zmq_ctx_new();
+#else
+	ssh_config_g->context = zmq_init(1);
+#endif
+	if (!ssh_config_g->context) {
+		LERROR("ssh plugin: failed to create context, %s",
+			strerror(errno));
+		return -errno;
+	}
+	ssh_config_g->requester = zmq_socket(ssh_config_g->context,
+					     ZMQ_REQ);
+	if (!ssh_config_g->requester) {
+		LERROR("ssh plugin: failed to create socket, %s",
+			strerror(errno));
+		ret = -errno;
+		goto failed;
+	}
+	snprintf(str, SSH_BUFSIZE, "tcp://localhost:%s",
+		 ssh_config_g->zeromq_port);
+	ret = zmq_connect(ssh_config_g->requester, str);
+	if (ret) {
+		LERROR("ssh plugin: zmq client failed to connect, %s",
+			strerror(errno));
+		goto failed;
+	}
+	return 0;
+failed:
+	exit_client_zmq_connection(ssh_config_g);
+	return ret;
+}
 
 static void *ssh_connection_thread(void *arg)
 {
@@ -365,9 +424,9 @@ static void *ssh_connection_thread(void *arg)
 	void *context;
 	void *responder;
 	void *result;
+	char str[SSH_BUFSIZE];
 	char *receive_buf = NULL;
 	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
-	char str[SSH_BUFSIZE];
 	unsigned long hostaddr;
 	int sock;
 	struct sockaddr_in sin;
@@ -375,7 +434,11 @@ static void *ssh_connection_thread(void *arg)
 	LIBSSH2_CHANNEL *channel = NULL;
 	int result_len = SSH_RESULTS_BUFSIZE;
 	int extra_len = 0;
+	int loop = 0;
+	int need_restart = 0;
 
+restart:
+	loop++;
 	receive_buf = calloc(receive_buf_len, 1);
 	if (!receive_buf)
 		return NULL;
@@ -400,6 +463,8 @@ static void *ssh_connection_thread(void *arg)
 			sizeof(struct sockaddr_in)) != 0) {
 		LERROR("ssh plugin: failed to connect, %s",
 			strerror(errno));
+		if (errno == ECONNREFUSED)
+			need_restart = 1;
 		goto close_sock;
 	}
 
@@ -464,6 +529,9 @@ static void *ssh_connection_thread(void *arg)
 			strerror(errno));
 		goto free_result;
 	}
+
+	libssh2_channel_set_blocking(channel, 0);
+
 	/* request a terminal with 'vanilla' terminal emulation */
 	do {
 		rc = libssh2_channel_request_pty(channel, "vanilla");
@@ -488,6 +556,7 @@ static void *ssh_connection_thread(void *arg)
 		goto free_result;
 	}
 
+	/* start server zmq */
 	responder = zmq_socket(context, ZMQ_REP);
 	if (!responder) {
 		LERROR("ssh plugin: failed to create socket, %s",
@@ -500,6 +569,10 @@ static void *ssh_connection_thread(void *arg)
 			strerror(errno));
 		goto close_zmq;
 	}
+	rc = init_client_zmq_connection(ssh_config_g);
+	if (rc)
+		goto unbind_zmq;
+
 	pthread_mutex_lock(&ssh_lock);
 	ssh_config_g->bg_running = 1;
 	pthread_cond_signal(&cond_t);
@@ -522,9 +595,9 @@ static void *ssh_connection_thread(void *arg)
 		rc = zmq_msg_recv_once(&request, responder, 0,
 				       &receive_buf, &receive_buf_len);
 		if (rc < 0) {
-			LERROR("ssh plugin: failed to receive message: %s",
-				strerror(errno));
-			goto unbind_zmq;
+			LERROR("ssh plugin: failed to receive message: ret: %d %s",
+				rc, strerror(errno));
+			goto cleanup_client_zmq;
 		}
 		/* Step 2: Filter listening request */
 
@@ -533,11 +606,16 @@ static void *ssh_connection_thread(void *arg)
 					      receive_buf, receive_buf_len,
 					      &result, &result_len, extra_len);
 		if (rc < 0) {
-			LERROR("ssh plugin: failed to execute remote command, %s", receive_buf);
+			LERROR("ssh plugin: failed to execute remote command, rc %d, %s",
+				rc, receive_buf);
 			/* if we failed here, we need let sender know we failed here */
 			memcpy(result, ERROR_FORMAT, strlen(ERROR_FORMAT));
 			strncat(result, strerror(-rc),
 				result_len - strlen(ERROR_FORMAT));
+			if (rc == -EIDRM) {
+				need_restart = 1;
+				break;
+			}
 		}
 
 		/* Step 4: return results to collectd */
@@ -556,6 +634,8 @@ static void *ssh_connection_thread(void *arg)
 			break;
 		}
 	}
+cleanup_client_zmq:
+	exit_client_zmq_connection(ssh_config_g);
 unbind_zmq:
 #ifdef HAVE_ZMQ_NEW_VER
 	zmq_unbind(responder, str);
@@ -590,9 +670,19 @@ exit_ssh:
 		pthread_cond_signal(&cond_t);
 		pthread_mutex_unlock(&ssh_lock);
 	}
-	ssh_config_g->bg_running = 0;
 	free(receive_buf);
 	libssh2_exit();
+	/* avoid looping forever */
+	if (need_restart && loop < 10) {
+		need_restart = 0;
+		LERROR("ssh plugin: restart ssh connection background thread, count: %d",
+			loop);
+		/* let's relax a bit and drink coffee */
+		sleep(3);
+		goto restart;
+	}
+	ssh_config_g->bg_running = 0;
+	pthread_exit(NULL);
 	return NULL;
 }
 
@@ -600,7 +690,6 @@ static int ssh_plugin_init(void)
 {
 	int ret;
 	pthread_t tid;
-	char str[SSH_BUFSIZE];
 	struct ssh_configs *ssh_config_g;
 
 	pthread_mutex_init(&ssh_lock, NULL);
@@ -650,44 +739,8 @@ static int ssh_plugin_init(void)
 		pthread_kill(tid, SIGKILL);
 		return -1;
 	}
-#ifdef HAVE_ZMQ_NEW_VER
-	ssh_config_g->context = zmq_ctx_new();
-#else
-	ssh_config_g->context = zmq_init(1);
-#endif
-	if (!ssh_config_g->context) {
-		LERROR("ssh plugin: failed to create context, %s",
-			strerror(errno));
-		pthread_kill(tid, SIGKILL);
-		return -1;
-	}
-	ssh_config_g->requester = zmq_socket(ssh_config_g->context,
-					     ZMQ_REQ);
-	if (!ssh_config_g->requester) {
-		LERROR("ssh plugin: failed to create socket, %s",
-			strerror(errno));
-		goto failed;
-	}
-	snprintf(str, SSH_BUFSIZE, "tcp://localhost:%s",
-		 ssh_config_g->zeromq_port);
-	ret = zmq_connect(ssh_config_g->requester, str);
-	if (ret) {
-		LERROR("ssh plugin: failed to connect, %s",
-			strerror(errno));
-		goto failed;
-
-	}
 	ssh_config_g->bg_tid = tid;
 	return 0;
-failed:
-	pthread_kill(tid, SIGKILL);
-	zmq_close(ssh_config_g->requester);
-#ifdef HAVE_ZMQ_NEW_VER
-	zmq_ctx_destroy(ssh_config_g->context);
-#else
-	zmq_term(ssh_config_g->context);
-#endif
-	return -1;
 }
 
 static int ssh_read_file(const char *path, char **buf, ssize_t *data_size)
@@ -919,16 +972,9 @@ static void ssh_config_fini(struct lustre_configs *lc)
 				lustre_get_private_data(lc);
 	if (!ssh_configs)
 		return;
-	if (ssh_configs->bg_tid) {
-		zmq_close(ssh_configs->requester);
-#ifdef HAVE_ZMQ_NEW_VER
-		zmq_ctx_destroy(ssh_configs->context);
-#else
-		zmq_term(ssh_configs->context);
-#endif
-		if (ssh_configs->bg_running)
-			pthread_kill(ssh_configs->bg_tid, SIGKILL);
-	}
+	exit_client_zmq_connection(ssh_configs);
+	if (ssh_configs->bg_tid && ssh_configs->bg_running)
+		pthread_kill(ssh_configs->bg_tid, SIGKILL);
 	free(ssh_configs->server_host);
 	free(ssh_configs->user_name);
 	free(ssh_configs->public_keyfile);
