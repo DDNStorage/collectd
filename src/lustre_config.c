@@ -828,7 +828,7 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci,
 	}
 
 	lustre_config_dump(config);
-	lustre_entry_dump_active(config->lc_definition.ld_root, 0);
+	//lustre_entry_dump_active(config->lc_definition.ld_root, 0);
 
 out:
 	if (status != 0) {
