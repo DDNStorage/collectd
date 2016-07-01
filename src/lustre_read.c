@@ -1054,7 +1054,8 @@ _lustre_entry_read(struct lustre_entry *entry,
 		assert(list_empty(&entry->le_children));
 		if (entry->le_definition->ld_read_file != NULL) {
 			status = entry->le_definition->ld_read_file(path,
-				&filebuf, &size);
+				&filebuf, &size,
+				(entry->le_definition)->ld_private_definition.ld_private_data);
 		} else {
 			status = lustre_read_file(path, &filebuf, &size);
 		}

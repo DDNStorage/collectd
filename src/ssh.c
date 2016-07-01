@@ -27,10 +27,6 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-static pthread_mutex_t ssh_lock;
-static pthread_cond_t  cond_t;
-struct lustre_configs *ssh_config_gs;
-
 #define SSH_MAX_COMMAND_SIZE (1024)
 #define DEFAULT_RECV_BUFSIZE 512
 #define SSH_RESULTS_BUFSIZE 4096
@@ -41,6 +37,9 @@ struct lustre_configs *ssh_config_gs;
 
 struct ssh_configs {
 	pthread_t bg_tid;
+	pthread_mutex_t ssh_lock;
+	pthread_cond_t  cond_t;
+
 	void *context;
 	void *requester;
 	char *server_host;
@@ -55,6 +54,13 @@ struct ssh_configs {
 	char *known_hosts;
 	int bg_running: 1;
 };
+
+struct ssh_entry {
+	struct ssh_configs	*ssh_configs;
+	struct list_head	ssh_linkage;
+};
+
+LIST_HEAD(ssh_link_head);
 
 static int check_config_path(const char *path)
 {
@@ -74,7 +80,8 @@ static int check_config_path(const char *path)
 	return 0;
 }
 
-static int verify_knownhost(LIBSSH2_SESSION *session, const char *hostname)
+static int verify_knownhost(struct ssh_configs *ssh_configs,
+			    LIBSSH2_SESSION *session)
 {
 	const char *fingerprint;
 	struct libssh2_knownhost *host;
@@ -83,13 +90,12 @@ static int verify_knownhost(LIBSSH2_SESSION *session, const char *hostname)
 	size_t len;
 	int type;
 	LIBSSH2_KNOWNHOSTS *nh;
-	struct ssh_configs *ssh_config_g = (struct ssh_configs *)
-			lustre_get_private_data(ssh_config_gs);
+	const char *hostname = ssh_configs->server_host;
 
 	nh = libssh2_knownhost_init(session);
 	if (!nh)
 		return -errno;
-	ret = libssh2_knownhost_readfile(nh, ssh_config_g->known_hosts,
+	ret = libssh2_knownhost_readfile(nh, ssh_configs->known_hosts,
 					 LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 	if (ret < 0)
 		return ret;
@@ -339,21 +345,21 @@ free_mem:
  * 2.Password, dangerous to store password inside configurations.
  */
 static int ssh_userauth_connection(LIBSSH2_SESSION *session,
-				   struct ssh_configs *ssh_config_g)
+				   struct ssh_configs *ssh_configs)
 {
 	int rc;
 
 	while ((rc = libssh2_userauth_publickey_fromfile(session,
-		ssh_config_g->user_name,
-		ssh_config_g->public_keyfile,
-		ssh_config_g->private_keyfile,
-		ssh_config_g->sshkey_passphrase)) == LIBSSH2_ERROR_EAGAIN);
+		ssh_configs->user_name,
+		ssh_configs->public_keyfile,
+		ssh_configs->private_keyfile,
+		ssh_configs->sshkey_passphrase)) == LIBSSH2_ERROR_EAGAIN);
 	if (rc == 0)
 		return 0;
-	if (!ssh_config_g->user_password)
+	if (!ssh_configs->user_password)
 		return -EPERM;
-	while ((rc = libssh2_userauth_password(session, ssh_config_g->user_name,
-		ssh_config_g->user_password)) == LIBSSH2_ERROR_EAGAIN);
+	while ((rc = libssh2_userauth_password(session, ssh_configs->user_name,
+		ssh_configs->user_password)) == LIBSSH2_ERROR_EAGAIN);
 	if (rc == 0)
 		return 0;
 	return -EPERM;
@@ -376,33 +382,33 @@ static void exit_client_zmq_connection(struct ssh_configs *ssh_configs)
 }
 
 
-static int init_client_zmq_connection(struct ssh_configs *ssh_config_g)
+static int init_client_zmq_connection(struct ssh_configs *ssh_configs)
 {
 	int ret;
 	char str[SSH_BUFSIZE];
 
 	/* init zeromq client here */
 #ifdef HAVE_ZMQ_NEW_VER
-	ssh_config_g->context = zmq_ctx_new();
+	ssh_configs->context = zmq_ctx_new();
 #else
-	ssh_config_g->context = zmq_init(1);
+	ssh_configs->context = zmq_init(1);
 #endif
-	if (!ssh_config_g->context) {
+	if (!ssh_configs->context) {
 		LERROR("ssh plugin: failed to create context, %s",
 			strerror(errno));
 		return -errno;
 	}
-	ssh_config_g->requester = zmq_socket(ssh_config_g->context,
+	ssh_configs->requester = zmq_socket(ssh_configs->context,
 					     ZMQ_REQ);
-	if (!ssh_config_g->requester) {
+	if (!ssh_configs->requester) {
 		LERROR("ssh plugin: failed to create socket, %s",
 			strerror(errno));
 		ret = -errno;
 		goto failed;
 	}
 	snprintf(str, SSH_BUFSIZE, "tcp://localhost:%s",
-		 ssh_config_g->zeromq_port);
-	ret = zmq_connect(ssh_config_g->requester, str);
+		 ssh_configs->zeromq_port);
+	ret = zmq_connect(ssh_configs->requester, str);
 	if (ret) {
 		LERROR("ssh plugin: zmq client failed to connect, %s",
 			strerror(errno));
@@ -410,7 +416,7 @@ static int init_client_zmq_connection(struct ssh_configs *ssh_config_g)
 	}
 	return 0;
 failed:
-	exit_client_zmq_connection(ssh_config_g);
+	exit_client_zmq_connection(ssh_configs);
 	return ret;
 }
 
@@ -418,8 +424,8 @@ static void *ssh_connection_thread(void *arg)
 {
 	zmq_msg_t request;
 	zmq_msg_t reply;
-	struct ssh_configs *ssh_config_g = (struct ssh_configs *)
-			lustre_get_private_data(ssh_config_gs);
+	struct ssh_configs *ssh_configs = (struct ssh_configs *)
+					    arg;
 	int rc = 0;
 	void *context;
 	void *responder;
@@ -443,7 +449,7 @@ restart:
 	if (!receive_buf)
 		return NULL;
 
-	snprintf(str, SSH_BUFSIZE, "tcp://*:%s", ssh_config_g->zeromq_port);
+	snprintf(str, SSH_BUFSIZE, "tcp://*:%s", ssh_configs->zeromq_port);
 	rc = libssh2_init(0);
 	if (rc) {
 		LERROR("ssh plugin: failed to call libssh2_init, %s",
@@ -455,7 +461,7 @@ restart:
 		LERROR("ssh plugin: failed to socket, %s", strerror(errno));
 		goto exit_ssh;
 	}
-	hostaddr = inet_addr(ssh_config_g->server_host);
+	hostaddr = inet_addr(ssh_configs->server_host);
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(22);
 	sin.sin_addr.s_addr = hostaddr;
@@ -493,14 +499,14 @@ restart:
 		goto disconnect_session;
 
 	/* verify the server's identity */
-	if (verify_knownhost(session, ssh_config_g->server_host) < 0) {
+	if (verify_knownhost(ssh_configs, session) < 0) {
 		LERROR("ssh plugin: failed to verify knownhost: %s",
 			strerror(errno));
 		goto free_result;
 	}
 
 	/* Authenticate ourselves */
-	rc = ssh_userauth_connection(session, ssh_config_g);
+	rc = ssh_userauth_connection(session, ssh_configs);
 	if (rc) {
 		LERROR("ssh plugin: error authenticating with password, %d",
 			rc);
@@ -569,14 +575,14 @@ restart:
 			strerror(errno));
 		goto close_zmq;
 	}
-	rc = init_client_zmq_connection(ssh_config_g);
+	rc = init_client_zmq_connection(ssh_configs);
 	if (rc)
 		goto unbind_zmq;
 
-	pthread_mutex_lock(&ssh_lock);
-	ssh_config_g->bg_running = 1;
-	pthread_cond_signal(&cond_t);
-	pthread_mutex_unlock(&ssh_lock);
+	pthread_mutex_lock(&ssh_configs->ssh_lock);
+	ssh_configs->bg_running = 1;
+	pthread_cond_signal(&ssh_configs->cond_t);
+	pthread_mutex_unlock(&ssh_configs->ssh_lock);
 
 	/* pre-run to ignore login messages */
 	rc = execute_remote_processes(session, channel, sock, receive_buf,
@@ -635,7 +641,7 @@ restart:
 		}
 	}
 cleanup_client_zmq:
-	exit_client_zmq_connection(ssh_config_g);
+	exit_client_zmq_connection(ssh_configs);
 unbind_zmq:
 #ifdef HAVE_ZMQ_NEW_VER
 	zmq_unbind(responder, str);
@@ -665,10 +671,10 @@ shutdown_sock:
 close_sock:
 	close(sock);
 exit_ssh:
-	if (!ssh_config_g->bg_running) {
-		pthread_mutex_lock(&ssh_lock);
-		pthread_cond_signal(&cond_t);
-		pthread_mutex_unlock(&ssh_lock);
+	if (!ssh_configs->bg_running) {
+		pthread_mutex_lock(&ssh_configs->ssh_lock);
+		pthread_cond_signal(&ssh_configs->cond_t);
+		pthread_mutex_unlock(&ssh_configs->ssh_lock);
 	}
 	free(receive_buf);
 	libssh2_exit();
@@ -681,54 +687,51 @@ exit_ssh:
 		sleep(3);
 		goto restart;
 	}
-	ssh_config_g->bg_running = 0;
+	ssh_configs->bg_running = 0;
 	pthread_exit(NULL);
 	return NULL;
 }
 
-static int ssh_plugin_init(void)
+static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 {
 	int ret;
 	pthread_t tid;
-	struct ssh_configs *ssh_config_g;
 
-	pthread_mutex_init(&ssh_lock, NULL);
-	pthread_cond_init(&cond_t, NULL);
-	if (!ssh_config_gs)
-		return -EINVAL;
-	ssh_config_g = (struct ssh_configs *)
-			lustre_get_private_data(ssh_config_gs);
-	if (!ssh_config_g->server_host || !ssh_config_g->user_name
-	    || !ssh_config_g->known_hosts) {
+	pthread_mutex_init(&ssh_configs->ssh_lock, NULL);
+	pthread_cond_init(&ssh_configs->cond_t, NULL);
+	if (!ssh_configs->server_host || !ssh_configs->user_name
+	    || !ssh_configs->known_hosts) {
 		LERROR("ssh plugin: server_host,server name or knownhosts configs are missing");
 		return -EINVAL;
 	}
-	if (!ssh_config_g->public_keyfile &&
-	    ssh_config_g->private_keyfile) {
+	if (!ssh_configs->public_keyfile &&
+	    ssh_configs->private_keyfile) {
 		LERROR("ssh plugin: keyfiles need to be given in pair, or both missing");
 		return -EINVAL;
 	}
-	if (ssh_config_g->public_keyfile &&
-	    !ssh_config_g->private_keyfile) {
+	if (ssh_configs->public_keyfile &&
+	    !ssh_configs->private_keyfile) {
 		LERROR("ssh plugin: keyfiles need to be set in pair, or both missing");
 		return -EINVAL;
 	}
-	if (!ssh_config_g->public_keyfile && !ssh_config_g->private_keyfile
-	    && !ssh_config_g->user_password) {
+	if (!ssh_configs->public_keyfile && !ssh_configs->private_keyfile
+	    && !ssh_configs->user_password) {
 		LERROR("ssh plugin: both password and keyfiles are missing");
 		return -EINVAL;
 	}
 	/* create thread that run in the background */
-	ret = pthread_create(&tid, NULL, ssh_connection_thread, NULL);
+	ret = pthread_create(&tid, NULL, ssh_connection_thread,
+			     (void *)ssh_configs);
 	if (ret < 0) {
 		LERROR("ssh plugin: failed to create thread, %s",
 			strerror(errno));
 		return -errno;
 	}
-	pthread_mutex_lock(&ssh_lock);
-	pthread_cond_wait(&cond_t, &ssh_lock);
-	pthread_mutex_unlock(&ssh_lock);
-	if (!ssh_config_g->bg_running) {
+	pthread_mutex_lock(&ssh_configs->ssh_lock);
+	pthread_cond_wait(&ssh_configs->cond_t,
+			  &ssh_configs->ssh_lock);
+	pthread_mutex_unlock(&ssh_configs->ssh_lock);
+	if (!ssh_configs->bg_running) {
 		LERROR("ssh plugin: background thread have been terminated");
 		return -1;
 	}
@@ -739,11 +742,12 @@ static int ssh_plugin_init(void)
 		pthread_kill(tid, SIGKILL);
 		return -1;
 	}
-	ssh_config_g->bg_tid = tid;
+	ssh_configs->bg_tid = tid;
 	return 0;
 }
 
-static int ssh_read_file(const char *path, char **buf, ssize_t *data_size)
+static int ssh_read_file(const char *path, char **buf, ssize_t *data_size,
+			 void *ld_private_data)
 {
 	int ret;
 	zmq_msg_t request;
@@ -751,9 +755,8 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size)
 	char *receive_buf = NULL;
 	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
 	char cmd[SSH_MAX_COMMAND_SIZE];
-	struct ssh_configs *ssh_config_g = (struct ssh_configs *)
-			lustre_get_private_data(ssh_config_gs);
-	if (!ssh_config_g->bg_running) {
+	struct ssh_configs *ssh_configs = (struct ssh_configs *)ld_private_data;
+	if (!ssh_configs->bg_running) {
 		LERROR("ssh plugin: background thread have been terminated");
 		return -EIO;
 	}
@@ -768,9 +771,9 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size)
 	memset(zmq_msg_data(&request), 0, SSH_MAX_COMMAND_SIZE);
 	memcpy(zmq_msg_data(&request), cmd, strlen(cmd));
 #ifdef HAVE_ZMQ_NEW_VER
-	ret = zmq_msg_send(&request, ssh_config_g->requester, 0);
+	ret = zmq_msg_send(&request, ssh_configs->requester, 0);
 #else
-	ret = zmq_send(ssh_config_g->requester, &request, 0);
+	ret = zmq_send(ssh_configs->requester, &request, 0);
 #endif
 	if (ret < 0) {
 		LERROR("ssh plugin: failed to send msg, %s",
@@ -786,7 +789,7 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size)
 	 * Case2: got error results(error format?)
 	 * Case3: we could not receive anything, timeout happen.
 	 */
-	ret = zmq_msg_recv_once(&reply, ssh_config_g->requester, 0,
+	ret = zmq_msg_recv_once(&reply, ssh_configs->requester, 0,
 				&receive_buf, &receive_buf_len);
 	if (ret < 0) {
 		LERROR("ssh plugin: failed to receive msg, %s",
@@ -810,23 +813,24 @@ failed:
 	return ret;
 }
 
-static int ssh_read(void)
+static int ssh_read(user_data_t *user_data)
 {
 	struct list_head path_head;
+	struct lustre_configs *ssh_configss = user_data->data;
 
-	if (ssh_config_gs == NULL) {
+	if (ssh_configss == NULL) {
 		LERROR("ssh plugin is not configured properly");
 		return -1;
 	}
 
-	if (!ssh_config_gs->lc_definition.ld_root->le_active) {
+	if (!ssh_configss->lc_definition.ld_root->le_active) {
 		LERROR("ssh plugin: root entry of ssh plugin is not activated");
 		return 0;
 	}
 
-	ssh_config_gs->lc_definition.ld_query_times++;
+	ssh_configss->lc_definition.ld_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(ssh_config_gs->lc_definition.ld_root, "/",
+	return lustre_entry_read(ssh_configss->lc_definition.ld_root, "/",
 				 &path_head);
 }
 
@@ -988,23 +992,81 @@ static void ssh_config_fini(struct lustre_configs *lc)
 static int ssh_config_internal(oconfig_item_t *ci)
 {
 	struct lustre_private_definition ld_private_definition;
+	struct lustre_configs *ssh_configss;
+	struct ssh_configs *ssh_configs;
+	user_data_t ud;
+	char callback_name[3*DATA_MAX_NAME_LEN];
+	int rc;
 
 	ld_private_definition.ld_private_init = ssh_config_init;
 	ld_private_definition.ld_private_config = ssh_config_private;
 	ld_private_definition.ld_private_fini = ssh_config_fini;
-	ssh_config_gs = lustre_config(ci, &ld_private_definition);
-	if (ssh_config_gs == NULL) {
+	ssh_configss = lustre_config(ci, &ld_private_definition);
+	if (ssh_configss == NULL) {
 		LERROR("ssh plugin: failed to configure ssh");
 		return -EINVAL;
 	}
 
-	ssh_config_gs->lc_definition.ld_read_file = ssh_read_file;
+	ssh_configss->lc_definition.ld_read_file = ssh_read_file;
+	ssh_configs = (struct ssh_configs *)lustre_get_private_data(ssh_configss);
+
+	struct ssh_entry *ssh_entry = malloc(sizeof(struct ssh_entry));
+	if (!ssh_entry) {
+		LERROR("ssh plugin: failed allocate memory for ssh_entry");
+		return -ENOMEM;
+	}
+	ssh_entry->ssh_configs = ssh_configs;
+	list_add_tail(&ssh_entry->ssh_linkage, &ssh_link_head);
+
+	memset (&ud, 0, sizeof (ud));
+	ud.data = ssh_configss;
+	ud.free_func = (void *)ssh_config_fini;
+
+	memset (callback_name, 0, sizeof (callback_name));
+	ssnprintf (callback_name, sizeof (callback_name),
+		   "ssh/%s/%s", ssh_configs->server_host,
+		   ssh_configs->zeromq_port);
+
+	rc = plugin_register_complex_read (/* group = */ NULL,
+				/* name      = */ callback_name,
+				/* callback  = */ ssh_read,
+				/* interval  = */ 0,
+				/* user_data = */ &ud);
+	if (rc) {
+		ssh_config_fini(ssh_configss);
+		return rc;
+	}
 	return 1;
+}
+
+static int ssh_plugin_init_once(void)
+{
+	struct ssh_entry *ssh_entry;
+	int rc;
+	int total = 0;
+	int failed = 0;
+
+	/* should be safe */
+	list_for_each_entry(ssh_entry, &ssh_link_head, ssh_linkage)
+	{
+		rc = ssh_plugin_init(ssh_entry->ssh_configs);
+		if (rc) {
+			LERROR("ssh plugin: failed to init ssh plugin for host: %s",
+				ssh_entry->ssh_configs->server_host);
+			failed++;
+			continue;
+		}
+		total++;
+	}
+	if (total == failed)
+		return -1;
+
+	return 0;
+
 }
 
 void module_register(void)
 {
 	plugin_register_complex_config("ssh", ssh_config_internal);
-	plugin_register_init("ssh", ssh_plugin_init);
-	plugin_register_read("ssh", ssh_read);
+	plugin_register_init ("ssh", ssh_plugin_init_once);
 } /* void module_register */
