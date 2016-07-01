@@ -272,7 +272,8 @@ struct lustre_entry {
 };
 
 typedef int (*lustre_read_file_fn)
-	(const char *path, char **buf, ssize_t *data_size);
+	(const char *path, char **buf, ssize_t *data_size,
+	 void *private_data);
 typedef int (*lustre_private_init_fn)
 	(struct lustre_configs *);
 typedef void (*lustre_private_fini_fn)

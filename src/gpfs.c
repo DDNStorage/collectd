@@ -35,7 +35,8 @@ struct lustre_configs *gpfs_config_g;
 #define GPFS_MMPMON_PREFIX "/usr/lpp/mmfs/bin/mmpmon -p -i "
 #define GPFS_MAX_LENGTH (1024)
 
-static int gpfs_read_file(const char *path, char **buf, ssize_t *data_size)
+static int gpfs_read_file(const char *path, char **buf, ssize_t *data_size,
+			  void *ld_private_data)
 {
 	char cmd_file[sizeof(GPFS_CMD_FILE) + 1];
 	char cmd[GPFS_MAX_LENGTH];
