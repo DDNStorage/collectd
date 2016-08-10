@@ -34,6 +34,8 @@
 #define MAX_PATH_LENGTH	4096
 #define MAX_IP_ADDRESS_LENGTH 128
 #define ERROR_FORMAT ("ERROR: FAILED TO EXECUTE REMOTE COMMAND: ")
+#define MIN_CONNECTION_INTERVAL 2
+#define MAX_CONNECTION_INTERVAL 60
 
 struct ssh_configs {
 	pthread_t bg_tid;
@@ -420,47 +422,27 @@ failed:
 	return ret;
 }
 
-static void *ssh_connection_thread(void *arg)
+static int ssh_setup_socket(struct ssh_configs *ssh_configs)
 {
-	zmq_msg_t request;
-	zmq_msg_t reply;
-	struct ssh_configs *ssh_configs = (struct ssh_configs *)
-					    arg;
-	int rc = 0;
-	void *context;
-	void *responder;
-	void *result;
-	char str[SSH_BUFSIZE];
-	char *receive_buf = NULL;
-	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
-	unsigned long hostaddr;
+	int rc;
 	int sock;
+	unsigned long hostaddr;
 	struct sockaddr_in sin;
-	LIBSSH2_SESSION *session;
-	LIBSSH2_CHANNEL *channel = NULL;
-	int result_len = SSH_RESULTS_BUFSIZE;
-	int extra_len = 0;
-	int loop = 0;
-	int need_restart = 0;
 
-restart:
-	loop++;
-	receive_buf = calloc(receive_buf_len, 1);
-	if (!receive_buf)
-		return NULL;
-
-	snprintf(str, SSH_BUFSIZE, "tcp://*:%s", ssh_configs->zeromq_port);
 	rc = libssh2_init(0);
 	if (rc) {
 		LERROR("ssh plugin: failed to call libssh2_init, %s",
 			strerror(errno));
-		return NULL;
+		return rc;
 	}
+
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
 		LERROR("ssh plugin: failed to socket, %s", strerror(errno));
-		goto exit_ssh;
+		rc = -1;
+		goto failed1;
 	}
+
 	hostaddr = inet_addr(ssh_configs->server_host);
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(22);
@@ -469,17 +451,39 @@ restart:
 			sizeof(struct sockaddr_in)) != 0) {
 		LERROR("ssh plugin: failed to connect, %s",
 			strerror(errno));
-		if (errno == ECONNREFUSED)
-			need_restart = 1;
-		goto close_sock;
+		rc = -1;
+		goto failed2;
 	}
+	return sock;
+
+failed2:
+	shutdown(sock, 2);
+	close(sock);
+failed1:
+	libssh2_exit();
+	return rc;
+}
+
+static void ssh_cleanup_socket(int sock)
+{
+	shutdown(sock, 2);
+	close(sock);
+	libssh2_exit();
+}
+
+static LIBSSH2_SESSION *
+ssh_setup_session(struct ssh_configs *ssh_configs, int sock)
+{
+	LIBSSH2_SESSION *session;
+	int rc;
 
 	/* Create a session instance */
 	session = libssh2_session_init();
 	if (!session) {
 		LERROR("ssh plugin: libssh2_session_init failed");
-		goto shutdown_sock;
+		return NULL;
 	}
+
 	/* tell libssh2 we want it all done non-blocking */
 	libssh2_session_set_blocking(session, 0);
 
@@ -494,15 +498,12 @@ restart:
 		goto free_session;
 	}
 
-	result = calloc(result_len, 1);
-	if (!result)
-		goto disconnect_session;
-
 	/* verify the server's identity */
-	if (verify_knownhost(ssh_configs, session) < 0) {
+	rc = verify_knownhost(ssh_configs, session);
+	if (rc < 0) {
 		LERROR("ssh plugin: failed to verify knownhost: %s",
 			strerror(errno));
-		goto free_result;
+		goto disconnect_session;
 	}
 
 	/* Authenticate ourselves */
@@ -510,6 +511,109 @@ restart:
 	if (rc) {
 		LERROR("ssh plugin: error authenticating with password, %d",
 			rc);
+		goto disconnect_session;
+	}
+	return session;
+
+disconnect_session:
+	libssh2_session_disconnect(session, NULL);
+free_session:
+	libssh2_session_free(session);
+	return NULL;
+}
+
+void ssh_cleanup_session(LIBSSH2_SESSION *session)
+{
+	libssh2_session_disconnect(session, NULL);
+	libssh2_session_free(session);
+}
+
+static LIBSSH2_CHANNEL *
+ssh_setup_channel(LIBSSH2_SESSION * session, int sock)
+{
+	LIBSSH2_CHANNEL *channel;
+	int rc;
+
+	/* request a shell */
+	while ((channel = libssh2_channel_open_session(session)) == NULL
+		&& libssh2_session_last_error(session, NULL, NULL, 0)
+			== LIBSSH2_ERROR_EAGAIN)
+		waitsocket(sock, session);
+	if (!channel) {
+		LERROR("ssh plugin: libssh2_channel_open_session failed: %s",
+			strerror(errno));
+		return NULL;
+	}
+
+	libssh2_channel_set_blocking(channel, 0);
+
+	/* request a terminal with 'vanilla' terminal emulation */
+	do {
+		rc = libssh2_channel_request_pty(channel, "vanilla");
+		if (rc == LIBSSH2_ERROR_EAGAIN)
+			waitsocket(sock, session);
+	} while (rc == LIBSSH2_ERROR_EAGAIN);
+	if (rc) {
+		LERROR("ssh plugin: rc: %d, failed to request ptyn: %s",
+			rc, strerror(errno));
+		goto failed;
+	}
+
+	/* open a shell on that pty */
+	do {
+		rc = libssh2_channel_shell(channel);
+		if (rc == LIBSSH2_ERROR_EAGAIN)
+			waitsocket(sock, session);
+	} while (rc == LIBSSH2_ERROR_EAGAIN);
+	if (rc) {
+		LERROR("ssh plugin: failed to request shell on allocated pty: %s",
+			strerror(errno));
+		goto failed;
+	}
+
+	return channel;
+failed:
+	while ((rc = libssh2_channel_close(channel))
+			== LIBSSH2_ERROR_EAGAIN)
+		waitsocket(sock, session);
+	libssh2_channel_free(channel);
+	return NULL;
+}
+
+void ssh_cleanup_channel(int sock, LIBSSH2_SESSION* session,
+		    LIBSSH2_CHANNEL *channel)
+{
+
+	int rc;
+
+	while ((rc = libssh2_channel_close(channel))
+			== LIBSSH2_ERROR_EAGAIN)
+		waitsocket(sock, session);
+	libssh2_channel_free(channel);
+}
+
+static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
+			      LIBSSH2_SESSION * session, LIBSSH2_CHANNEL *channel)
+{
+	zmq_msg_t request;
+	zmq_msg_t reply;
+	int rc = 0;
+	void *context;
+	void *responder;
+	void *result;
+	char *receive_buf = NULL;
+	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
+	int result_len = SSH_RESULTS_BUFSIZE;
+	int extra_len = 0;
+	char str[SSH_BUFSIZE];
+
+	receive_buf = calloc(receive_buf_len, 1);
+	if (!receive_buf)
+		return -ENOMEM;
+
+	result = calloc(result_len, 1);
+	if (!result) {
+		rc = -ENOMEM;
 		goto free_result;
 	}
 
@@ -525,43 +629,6 @@ restart:
 		goto free_result;
 	}
 
-	/* request a shell */
-	while ((channel = libssh2_channel_open_session(session)) == NULL
-		&& libssh2_session_last_error(session, NULL, NULL, 0)
-			== LIBSSH2_ERROR_EAGAIN)
-		waitsocket(sock, session);
-	if (!channel) {
-		LERROR("ssh plugin: libssh2_channel_open_session failed: %s",
-			strerror(errno));
-		goto free_result;
-	}
-
-	libssh2_channel_set_blocking(channel, 0);
-
-	/* request a terminal with 'vanilla' terminal emulation */
-	do {
-		rc = libssh2_channel_request_pty(channel, "vanilla");
-		if (rc == LIBSSH2_ERROR_EAGAIN)
-			waitsocket(sock, session);
-	} while (rc == LIBSSH2_ERROR_EAGAIN);
-	if (rc) {
-		LERROR("ssh plugin: rc: %d, failed to request ptyn: %s",
-			rc, strerror(errno));
-		goto free_result;
-	}
-
-	/* open a shell on that pty */
-	do {
-		rc = libssh2_channel_shell(channel);
-		if (rc == LIBSSH2_ERROR_EAGAIN)
-			waitsocket(sock, session);
-	} while (rc == LIBSSH2_ERROR_EAGAIN);
-	if (rc) {
-		LERROR("ssh plugin: failed to request shell on allocated pty: %s",
-			strerror(errno));
-		goto free_result;
-	}
-
 	/* start server zmq */
 	responder = zmq_socket(context, ZMQ_REP);
 	if (!responder) {
@@ -569,12 +636,14 @@ restart:
 			strerror(errno));
 		goto term_zmq;
 	}
+	snprintf(str, SSH_BUFSIZE, "tcp://*:%s", ssh_configs->zeromq_port);
 	rc = zmq_bind(responder, str);
 	if (rc) {
 		LERROR("ssh plugin: failed to bind %s, %s", str,
 			strerror(errno));
 		goto close_zmq;
 	}
+
 	rc = init_client_zmq_connection(ssh_configs);
 	if (rc)
 		goto unbind_zmq;
@@ -618,10 +687,9 @@ restart:
 			memcpy(result, ERROR_FORMAT, strlen(ERROR_FORMAT));
 			strncat(result, strerror(-rc),
 				result_len - strlen(ERROR_FORMAT));
-			if (rc == -EIDRM) {
-				need_restart = 1;
+			/* connectio have been broken */
+			if (rc == -EIDRM)
 				break;
-			}
 		}
 
 		/* Step 4: return results to collectd */
@@ -655,40 +723,72 @@ term_zmq:
 	zmq_term(context);
 #endif
 free_result:
-	free(result);
-	if (channel) {
-		while ((rc = libssh2_channel_close(channel))
-				== LIBSSH2_ERROR_EAGAIN)
-			waitsocket(sock, session);
-		libssh2_channel_free(channel);
-	}
-disconnect_session:
-	libssh2_session_disconnect(session, NULL);
-free_session:
-	libssh2_session_free(session);
-shutdown_sock:
-	shutdown(sock, 2);
-close_sock:
-	close(sock);
-exit_ssh:
 	if (!ssh_configs->bg_running) {
 		pthread_mutex_lock(&ssh_configs->ssh_lock);
 		pthread_cond_signal(&ssh_configs->cond_t);
 		pthread_mutex_unlock(&ssh_configs->ssh_lock);
 	}
+	free(result);
 	free(receive_buf);
-	libssh2_exit();
-	/* avoid looping forever */
-	if (need_restart && loop < 10) {
-		need_restart = 0;
-		LERROR("ssh plugin: restart ssh connection background thread, count: %d",
-			loop);
+	return rc;
+}
+
+static void *ssh_connection_thread(void *arg)
+{
+	struct ssh_configs *ssh_configs = (struct ssh_configs *)
+					    arg;
+	int sock;
+	LIBSSH2_SESSION * session = NULL;
+	LIBSSH2_CHANNEL *channel = NULL;
+	int conn_interval = MIN_CONNECTION_INTERVAL;
+	int rc;
+
+	while (1) {
+		sock = ssh_setup_socket(ssh_configs);
+		if (sock < 0)
+			goto restart;
+
+		session = ssh_setup_session(ssh_configs, sock);
+		if (!session) {
+			ssh_cleanup_socket(sock);
+			goto restart;
+		}
+
+		channel = ssh_setup_channel(session, sock);
+		if (!channel) {
+			ssh_cleanup_session(session);
+			ssh_cleanup_socket(sock);
+			goto restart;
+		}
+
+		/* reset conn interval once connection succeed */
+		conn_interval = MIN_CONNECTION_INTERVAL;
+
+		rc = ssh_handle_request(ssh_configs, sock, session, channel);
+		if (rc) {
+			ssh_cleanup_channel(sock, session, channel);
+			ssh_cleanup_session(session);
+			ssh_cleanup_socket(sock);
+		}
+restart:
+		LERROR("ssh plugin: restart ssh connection background thread, sleep %d seconds",
+		       conn_interval);
+
 		/* let's relax a bit and drink coffee */
-		sleep(3);
-		goto restart;
+		sleep(conn_interval);
+		if (conn_interval <= MAX_CONNECTION_INTERVAL / 2)
+			conn_interval *= 2;
+		else
+			conn_interval = MAX_CONNECTION_INTERVAL;
+
+		pthread_mutex_lock(&ssh_configs->ssh_lock);
+		if (!ssh_configs->bg_running) {
+			ssh_configs->bg_running = 1;
+			pthread_cond_signal(&ssh_configs->cond_t);
+		}
+		pthread_mutex_unlock(&ssh_configs->ssh_lock);
 	}
-	ssh_configs->bg_running = 0;
-	pthread_exit(NULL);
+
 	return NULL;
 }
 
