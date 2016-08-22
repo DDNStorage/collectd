@@ -36,6 +36,7 @@
 #define ERROR_FORMAT ("ERROR: FAILED TO EXECUTE REMOTE COMMAND: ")
 #define MIN_CONNECTION_INTERVAL 2
 #define MAX_CONNECTION_INTERVAL 60
+#define MAX_FAILOVER_HOST_NUM	32
 
 struct ssh_configs {
 	pthread_t bg_tid;
@@ -44,7 +45,9 @@ struct ssh_configs {
 
 	void *context;
 	void *requester;
-	char *server_host;
+	char *server_hosts[MAX_FAILOVER_HOST_NUM];
+	int  num_hosts;
+	int  cur_host;
 	char *user_name;
 	char *user_password;
 	char *zeromq_port;
@@ -92,7 +95,7 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 	size_t len;
 	int type;
 	LIBSSH2_KNOWNHOSTS *nh;
-	const char *hostname = ssh_configs->server_host;
+	const char *hostname = ssh_configs->server_hosts[ssh_configs->cur_host];
 
 	nh = libssh2_knownhost_init(session);
 	if (!nh)
@@ -443,7 +446,7 @@ static int ssh_setup_socket(struct ssh_configs *ssh_configs)
 		goto failed1;
 	}
 
-	hostaddr = inet_addr(ssh_configs->server_host);
+	hostaddr = inet_addr(ssh_configs->server_hosts[ssh_configs->cur_host]);
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(22);
 	sin.sin_addr.s_addr = hostaddr;
@@ -742,6 +745,7 @@ static void *ssh_connection_thread(void *arg)
 	LIBSSH2_CHANNEL *channel = NULL;
 	int conn_interval = MIN_CONNECTION_INTERVAL;
 	int rc;
+	int last_succeed_host = 0;
 
 	while (1) {
 		sock = ssh_setup_socket(ssh_configs);
@@ -763,6 +767,7 @@ static void *ssh_connection_thread(void *arg)
 
 		/* reset conn interval once connection succeed */
 		conn_interval = MIN_CONNECTION_INTERVAL;
+		last_succeed_host = ssh_configs->cur_host;
 
 		rc = ssh_handle_request(ssh_configs, sock, session, channel);
 		if (rc) {
@@ -774,11 +779,17 @@ restart:
 		LERROR("ssh plugin: restart ssh connection background thread, sleep %d seconds",
 		       conn_interval);
 
+		/* Try next failover node */
+		ssh_configs->cur_host++;
+		ssh_configs->cur_host %= ssh_configs->num_hosts;
+
 		/* let's relax a bit and drink coffee */
 		sleep(conn_interval);
-		if (conn_interval <= MAX_CONNECTION_INTERVAL / 2)
+		/* connection only enlarged when we tried all failver nodes */
+		if (ssh_configs->cur_host == last_succeed_host &&
+		    conn_interval <= MAX_CONNECTION_INTERVAL / 2)
 			conn_interval *= 2;
-		else
+		else if (ssh_configs->cur_host == last_succeed_host)
 			conn_interval = MAX_CONNECTION_INTERVAL;
 
 		pthread_mutex_lock(&ssh_configs->ssh_lock);
@@ -799,8 +810,8 @@ static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 
 	pthread_mutex_init(&ssh_configs->ssh_lock, NULL);
 	pthread_cond_init(&ssh_configs->cond_t, NULL);
-	if (!ssh_configs->server_host || !ssh_configs->user_name
-	    || !ssh_configs->known_hosts) {
+	if (!ssh_configs->server_hosts || !ssh_configs->user_name
+	    || !ssh_configs->known_hosts || !ssh_configs->num_hosts) {
 		LERROR("ssh plugin: server_host,server name or knownhosts configs are missing");
 		return -EINVAL;
 	}
@@ -1006,6 +1017,72 @@ static int host2ip(const char *host, char **ip)
 	return 0;
 }
 
+static int parse_server_hosts(struct ssh_configs *ssh_configs,
+			      char *value)
+{
+	char *p = value;
+	char *key_point;
+	int i = 0;
+	int ret;
+	int j;
+	char *ip;
+
+	/*
+ 	 * this function might be called several times,
+ 	 * cleanup it firstly.
+ 	 */
+	for (i = 0; i <  ssh_configs->num_hosts; i++) {
+		free(ssh_configs->server_hosts[i]);
+		ssh_configs->server_hosts[i] = NULL;
+	}
+	ssh_configs->num_hosts = 0;
+	ssh_configs->cur_host = 0;
+	i = 0;
+
+	while (p) {
+		if (i >= MAX_FAILOVER_HOST_NUM) {
+			LERROR("ssh plugin: exceed max failover host num: %d",
+				MAX_FAILOVER_HOST_NUM);
+			break;
+		}
+
+		while ((key_point = strsep(&p, " ")) != NULL) {
+			if (*key_point == '\0')
+				continue;
+			else
+				break;
+		}
+
+		ret = check_server_host(key_point);
+		if (ret) {
+			LERROR("ssh plugin: ignore invalid host: %s", key_point);
+			continue;
+		}
+
+		ret = host2ip(key_point, &ip);
+		if (ret) {
+			LERROR("ssh plugin: failed to parse host: %s to ip", key_point);
+			continue;
+		}
+
+		/* check duplicated hosts */
+		for (j = 0; j < ssh_configs->num_hosts; j++) {
+			if (!strcmp(ssh_configs->server_hosts[j], ip)) {
+				LERROR("ssh plugin: ignore duplicated failover host: %s, ip: %s",
+					key_point, ip);
+				free(ip);
+				continue;
+			}
+		}
+		ssh_configs->server_hosts[i++] = ip;
+		ssh_configs->num_hosts = i;
+	}
+	if (i)
+		return 0;
+	else
+		return -EINVAL;
+}
+
 static int ssh_config_private(oconfig_item_t *ci,
 			      struct lustre_configs *conf)
 {
@@ -1020,22 +1097,9 @@ static int ssh_config_private(oconfig_item_t *ci,
 		return ret;
 	}
 	if (strcasecmp("ServerHost", ci->key) == 0) {
-		free(ssh_configs->server_host);
-		ret = check_server_host(value);
-		if (!ret)
-			ret = host2ip(value, &ssh_configs->server_host);
-		/*
-		 * we don't free @value in error here, let it
-		 * be handled by ssh_config_fini(), otherwise
-		 * we need assign null to avoid double free in
-		 * ssh_config_fini().
-		 */
-		if (ret) {
-			ssh_configs->server_host = value;
-			LERROR("ssh plugin: invalid server host");
-		} else {
-			free(value);
-		}
+		ret = parse_server_hosts(ssh_configs, value);
+		if (ret)
+			LERROR("ssh plugin: invalid server hosts");
 	} else if (strcasecmp("UserName", ci->key) == 0) {
 		free(ssh_configs->user_name);
 		ssh_configs->user_name = value;
@@ -1072,6 +1136,7 @@ static int ssh_config_private(oconfig_item_t *ci,
 
 static void ssh_config_fini(struct lustre_configs *lc)
 {
+	int i;
 	struct ssh_configs *ssh_configs = (struct ssh_configs *)
 				lustre_get_private_data(lc);
 	if (!ssh_configs)
@@ -1079,7 +1144,9 @@ static void ssh_config_fini(struct lustre_configs *lc)
 	exit_client_zmq_connection(ssh_configs);
 	if (ssh_configs->bg_tid && ssh_configs->bg_running)
 		pthread_kill(ssh_configs->bg_tid, SIGKILL);
-	free(ssh_configs->server_host);
+
+	for (i = 0; i <  ssh_configs->num_hosts; i++)
+		free(ssh_configs->server_hosts[i]);
 	free(ssh_configs->user_name);
 	free(ssh_configs->public_keyfile);
 	free(ssh_configs->private_keyfile);
@@ -1124,7 +1191,7 @@ static int ssh_config_internal(oconfig_item_t *ci)
 
 	memset (callback_name, 0, sizeof (callback_name));
 	ssnprintf (callback_name, sizeof (callback_name),
-		   "ssh/%s/%s", ssh_configs->server_host,
+		   "ssh/%s/%s", ssh_configs->server_hosts[ssh_configs->cur_host],
 		   ssh_configs->zeromq_port);
 
 	rc = plugin_register_complex_read (/* group = */ NULL,
@@ -1145,14 +1212,16 @@ static int ssh_plugin_init_once(void)
 	int rc;
 	int total = 0;
 	int failed = 0;
+	int i;
 
 	/* should be safe */
 	list_for_each_entry(ssh_entry, &ssh_link_head, ssh_linkage)
 	{
 		rc = ssh_plugin_init(ssh_entry->ssh_configs);
 		if (rc) {
+			i = ssh_entry->ssh_configs->cur_host;
 			LERROR("ssh plugin: failed to init ssh plugin for host: %s",
-				ssh_entry->ssh_configs->server_host);
+				ssh_entry->ssh_configs->server_hosts[i]);
 			failed++;
 			continue;
 		}
