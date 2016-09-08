@@ -93,3 +93,48 @@ loadPlugin "write_graphite"
    Protocol "udp"
  </Carbon>
 </Plugin>
+
+LoadPlugin ssh
+<Plugin "ssh">
+  <Common>
+    DefinitionFile "/etc/sfa-0.1_definition.xml"
+    ServerHost "10.53.31.1 10.53.31.2"
+    UserName user
+    KnownhostsFile "/root/.ssh/known_hosts"
+    #PublicKeyfile XXX
+    #PrivateKeyfile XXX
+    UserPassword user
+    #SshKeyPassphrase XXX
+    ZeromqPort 1234
+  </Common>
+  <Item>
+    Type "vd_c_rates"
+  </Item>
+  <Item>
+    Type "vd_read_latency"
+  </Item>
+  <Item>
+    Type "vd_write_latency"
+  </Item>
+  <Item>
+    Type "vd_read_iosize"
+  </Item>
+  <Item>
+    Type "vd_write_iosize"
+  </Item>
+  <Item>
+    Type "pd_c_rates"
+  </Item>
+  <Item>
+    Type "pd_read_latency"
+  </Item>
+  <Item>
+    Type "pd_write_latency"
+  </Item>
+  <Item>
+    Type "pd_read_iosize"
+  </Item>
+  <Item>
+    Type "pd_write_iosize"
+  </Item>
+</Plugin>
