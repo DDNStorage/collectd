@@ -100,10 +100,12 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 	nh = libssh2_knownhost_init(session);
 	if (!nh)
 		return -errno;
+
 	ret = libssh2_knownhost_readfile(nh, ssh_configs->known_hosts,
 					 LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 	if (ret < 0)
-		return ret;
+		LERROR("ssh plugin: ignored libssh2_knownhost_readfile return ret: %d", ret);
+
 	fingerprint = libssh2_session_hostkey(session, &len, &type);
 	if (fingerprint) {
 #if LIBSSH2_VERSION_NUM >= 0x010206
@@ -121,6 +123,7 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 						LIBSSH2_KNOWNHOST_KEYENC_RAW,
 						&host);
 #endif
+		libssh2_knownhost_free(nh);
 		switch (check) {
 		case LIBSSH2_KNOWNHOST_CHECK_FAILURE:
 			LERROR("ssh plugin: something prevented the check to be made");
@@ -137,8 +140,9 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 		}
 		return 0;
 	}
+
 	libssh2_knownhost_free(nh);
-	return -errno;
+	return 0;
 }
 
 static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
