@@ -97,10 +97,24 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 	LIBSSH2_KNOWNHOSTS *nh;
 	const char *hostname = ssh_configs->server_hosts[ssh_configs->cur_host];
 
+	/* No host file imply StrictHostKeyChecking=no */
+	if (!ssh_configs->known_hosts)
+		return 0;
+
 	nh = libssh2_knownhost_init(session);
 	if (!nh)
 		return -errno;
 
+	/*
+	 * libssh2_knownhost_readfile() might return errors if
+	 * it find some unspported format, howerver we ignore
+	 * errors for two reasons:
+	 *
+	 * 1) It might have parsed supported format, target host might
+	 * be there. it could try further.
+	 * 2) skip unsupported format to walkaround it.
+	 *
+	 */
 	ret = libssh2_knownhost_readfile(nh, ssh_configs->known_hosts,
 					 LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 	if (ret < 0)
@@ -815,8 +829,8 @@ static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 	pthread_mutex_init(&ssh_configs->ssh_lock, NULL);
 	pthread_cond_init(&ssh_configs->cond_t, NULL);
 	if (!ssh_configs->server_hosts || !ssh_configs->user_name
-	    || !ssh_configs->known_hosts || !ssh_configs->num_hosts) {
-		LERROR("ssh plugin: server_host,server name or knownhosts configs are missing");
+	    || !ssh_configs->num_hosts) {
+		LERROR("ssh plugin: At least give one host and user");
 		return -EINVAL;
 	}
 	if (!ssh_configs->public_keyfile &&
