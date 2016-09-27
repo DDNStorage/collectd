@@ -159,10 +159,10 @@ static int gpfs_config_internal(oconfig_item_t *ci)
 	gpfs_config_g = lustre_config(ci, NULL);
 	if (gpfs_config_g == NULL) {
 		ERROR("failed to configure gpfs");
-		return 0;
+		return -1;
 	}
 	gpfs_config_g->lc_definition.ld_read_file = gpfs_read_file;
-	return 1;
+	return 0;
 }
 
 void module_register(void)

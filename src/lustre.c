@@ -52,9 +52,9 @@ static int lustre_config_internal(oconfig_item_t *ci)
 	lustre_config_g = lustre_config(ci, NULL);
 	if (lustre_config_g == NULL) {
 		ERROR("failed to configure lustre");
-		return 0;
+		return -1;
 	}
-	return 1;
+	return 0;
 }
 
 static int lustre_shutdown()
