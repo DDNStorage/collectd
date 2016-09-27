@@ -353,7 +353,7 @@ static int
 lustre_option_init(struct lustre_submit_option *option,
 		   char *string)
 {
-	strcpy(option->lso_string, string);
+	strncpy(option->lso_string, string, MAX_NAME_LENGH);
 	return 0;
 }
 
@@ -391,7 +391,7 @@ lustre_xml_option_parse(struct lustre_field_type *field, xmlNode *node)
 				break;
 			}
 			value = (char*)xmlNodeGetContent(tmp);
-			strcpy(string, value);
+			strncpy(string, value, 1024);
 			xmlFree(value);
 			inited = 1;
 		} else {
@@ -461,7 +461,7 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 				xmlFree(value);
 				break;
 			}
-			strcpy(field->lft_name, value);
+			strncpy(field->lft_name, value, MAX_NAME_LENGH);
 			field->lft_flags |= LUSTRE_FIELD_FLAG_NAME;
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_TYPE) == 0) {
@@ -554,7 +554,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 				xmlFree(value);
 				break;
 			}
-			strcpy(item->lit_type_name, value);
+			strncpy(item->lit_type_name, value, MAX_NAME_LENGH);
 			item->lit_flags |= LUSTRE_ITEM_FLAG_NAME;
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_PATTERN) == 0) {
@@ -565,7 +565,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 				xmlFree(value);
 				break;
 			}
-			strcpy(item->lit_pattern, value);
+			strncpy(item->lit_pattern, value, MAX_NAME_LENGH);
 			xmlFree(value);
 			status = lustre_compile_regex(&item->lit_regex,
 						      item->lit_pattern);
@@ -590,7 +590,7 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 				xmlFree(value);
 				break;
 			}
-			strcpy(item->lit_context, value);
+			strncpy(item->lit_context, value, MAX_NAME_LENGH);
 			xmlFree(value);
 			status = lustre_compile_regex(&item->lit_context_regex,
 						      item->lit_context);
@@ -671,7 +671,7 @@ lustre_xml_subpath_field_parse(struct lustre_entry *entry, xmlNode *node)
 				xmlFree(value);
 				break;
 			}
-			strcpy(field->lpft_name, value);
+			strncpy(field->lpft_name, value, MAX_NAME_LENGH);
 			field->lpft_flags |= LUSTRE_SUBPATH_FIELD_FLAG_NAME;
 			xmlFree(value);
 		} else {
@@ -730,7 +730,7 @@ lustre_xml_subpath_parse(struct lustre_entry *entry, xmlNode *node)
 				xmlFree(value);
 				break;
 			}
-			strcpy(entry->le_subpath, value);
+			strncpy(entry->le_subpath, value, MAX_NAME_LENGH);
 			inited = 1;
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_SUBPATH_FIELD) == 0) {

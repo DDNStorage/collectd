@@ -519,7 +519,8 @@ static int lustre_config_common(const oconfig_item_t *ci,
 
 	if (root_path && !status) {
 		if (conf->lc_definition.ld_inited)
-			strcpy(conf->lc_definition.ld_root->le_subpath, root_path);
+			strncpy(conf->lc_definition.ld_root->le_subpath,
+				root_path, MAX_NAME_LENGH);
 		free(root_path);
 	}
 	return (status);
@@ -588,7 +589,7 @@ static int lustre_config_item_rule(const oconfig_item_t *ci,
 				free(value);
 				break;
 			}
-			strcpy(rule->lir_string, value);
+			strncpy(rule->lir_string, value, MAX_NAME_LENGH);
 			status = lustre_compile_regex(&rule->lir_regex,
 						      value);
 			free(value);
@@ -681,7 +682,7 @@ static int lustre_config_extended_field(const oconfig_item_t *ci,
 				free(value);
 				break;
 			}
-			strcpy(ext_field->litef_name, value);
+			strncpy(ext_field->litef_name, value, MAX_NAME_LENGH);
 			free(value);
 		} else {
 			LERROR("Extended field: unknow value \"%s\"",
@@ -769,7 +770,7 @@ static int lustre_config_extended_parse(const oconfig_item_t *ci,
 				free(value);
 				break;
 			}
-			strcpy(extend->lite_string, value);
+			strncpy(extend->lite_string, value, MAX_NAME_LENGH);
 			status = lustre_compile_regex(&extend->lite_regex,
 						      value);
 			free(value);
@@ -853,7 +854,7 @@ static int lustre_config_item_filter(const oconfig_item_t *ci,
 				break;
 			}
 
-			strcpy(filter->lif_string, value);
+			strncpy(filter->lif_string, value, MAX_NAME_LENGH);
 			lustre_item_filter_add(item, filter);
 			free(value);
 		} else {
@@ -1067,7 +1068,8 @@ static int lustre_config_item_type(const oconfig_item_t *ci,
 				free(value);
 				break;
 			}
-			strcpy(type->lit_ext_tags, value);
+			strncpy(type->lit_ext_tags, value,
+				MAX_TSDB_TAGS_LENGTH);
 			free(value);
 		}
 	}

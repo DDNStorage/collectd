@@ -40,7 +40,6 @@ static void lustre_instance_submit(const char *host,
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
-	int status;
 
 	if (strcmp(type, "derive") == 0) {
 		values[0].derive = value;
@@ -96,7 +95,6 @@ static void lustre_instance_submit(const char *host,
 	      (unsigned long long)vl.values[0].derive);
 
 	plugin_dispatch_values(&vl);
-out:
 	meta_data_destroy(vl.meta);
 	vl.meta = NULL;
 }
@@ -391,8 +389,9 @@ static int lustre_submit(struct lustre_submit *submit,
 		}
 
 		if (strlen(tsdb_tags) > 0) {
-			strcat(tsdb_tags, " ");
-			strcat(tsdb_tags, ext_tsdb_tags);
+			strncat(tsdb_tags, " ", 1);
+			strncat(tsdb_tags, ext_tsdb_tags,
+				MAX_TSDB_TAGS_LENGTH - 1);
 		} else {
 			strncpy(tsdb_tags, ext_tsdb_tags,
 				MAX_TSDB_TAGS_LENGTH - 1);
