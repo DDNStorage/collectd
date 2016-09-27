@@ -1221,7 +1221,7 @@ static int ssh_config_internal(oconfig_item_t *ci)
 		ssh_config_fini(ssh_configss);
 		return rc;
 	}
-	return 1;
+	return 0;
 }
 
 static int ssh_plugin_init_once(void)
