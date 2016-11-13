@@ -25,25 +25,22 @@
 #include "plugin.h"
 #include "lustre_config.h"
 #include "lustre_read.h"
-
-struct lustre_configs *ime_config_g;
+ 
 
 #define START_FILE_SIZE (1048576)
 #define MAX_FILE_SIZE   (1048576 * 1024)
-/* TODO: configurable path of command */
-#define IME_MONITOR_PREFIX "ime-monitor "
 #define IME_MAX_LENGTH (1024)
 
-static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
-			  void *ld_private_data)
+struct lustre_configs *ime_config_g;
+char pool_index[IME_MAX_LENGTH];
+
+static int run_command(const char *cmd, char **buf, ssize_t *data_size)
 {
-	char cmd[IME_MAX_LENGTH];
 	int bufsize = START_FILE_SIZE;
 	char *filebuf;
 	FILE *fp;
 	ssize_t offset = 0;
 	int ret = 0;
-	int ret2 = 0;
 
 	filebuf = calloc(1, bufsize);
 	if (filebuf == NULL) {
@@ -51,14 +48,12 @@ static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
 		return -1;
 	}
 
-	/* Prepare request command, skipping leading / */
-	snprintf(cmd, sizeof(cmd), "%s\n", path + 1);
-
-	INFO("ime command: \"%s\"\n", cmd);
+	INFO("running command: \"%s\"\n", cmd);
 	/* Execute the command */
 	fp = popen(cmd, "r");
 	if (fp == NULL) {
 		ERROR("failed to run command: \"%s\"\n", cmd);
+		ret = -ENOMEM;
 		goto out_free;
 	}
 
@@ -86,17 +81,32 @@ static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
 			filebuf = p;
 		}
 	}
-	INFO("monitor output: \"%s\", length %ld", filebuf, offset);
+	INFO("command [%s] output: \"%s\", length %ld", cmd, filebuf, offset);
 out_close:
 	pclose(fp);
 out_free:
-	if (ret || ret2) {
+	if (ret) {
 		free(filebuf);
 	} else {
 		*buf = filebuf;
 		*data_size = offset;
 	}
-	return ret == 0 ? ret2 : ret;
+	return ret;
+}
+
+static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
+			  void *ld_private_data)
+{
+	char cmd[IME_MAX_LENGTH];
+	int ret;
+
+	/* Prepare request command, skipping leading / */
+	snprintf(cmd, sizeof(cmd), "ime-monitor -s %s %s\n", pool_index,
+		 path + 1);
+
+	INFO("ime command: \"%s\"\n", cmd);
+	ret = run_command(cmd, buf, data_size);
+	return ret;
 }
 
 static int ime_read(void)
@@ -119,6 +129,33 @@ static int ime_read(void)
 
 static int ime_config_internal(oconfig_item_t *ci)
 {
+	ssize_t	 data_size = 0;
+	char	*data;
+	int	 i;
+	int	 ret;
+
+	ret = run_command("ime-cfg-parse -g", &data, &data_size);
+	if (ret)
+		return ret;
+	/* P:I\n */
+	if (data_size < 4) {
+		free(data);
+		return ret;
+	}
+	for (i = 0; i < data_size; i++) {
+		if (data[i] == ':') {
+			data[i] = '.';
+			break;
+		}
+	}
+	if (i == data_size) {
+		free(data);
+		return -1;
+	}
+	data[data_size - 1] = '\0';
+	memcpy(pool_index, data, data_size - 1);
+	free(data);
+
 	ime_config_g = lustre_config(ci, NULL);
 	if (ime_config_g == NULL) {
 		ERROR("failed to configure ime");
