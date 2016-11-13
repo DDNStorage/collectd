@@ -30,6 +30,7 @@
 #define START_FILE_SIZE (1048576)
 #define MAX_FILE_SIZE   (1048576 * 1024)
 #define IME_MAX_LENGTH (1024)
+#define IME_PATH_PREFIX "/opt/ddn/ime/bin"
 
 struct lustre_configs *ime_config_g;
 char pool_index[IME_MAX_LENGTH];
@@ -101,8 +102,8 @@ static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
 	int ret;
 
 	/* Prepare request command, skipping leading / */
-	snprintf(cmd, sizeof(cmd), "ime-monitor -s %s %s\n", pool_index,
-		 path + 1);
+	snprintf(cmd, sizeof(cmd), IME_PATH_PREFIX"/ime-monitor -s %s %s\n",
+		 pool_index, path + 1);
 
 	INFO("ime command: \"%s\"\n", cmd);
 	ret = run_command(cmd, buf, data_size);
@@ -134,7 +135,8 @@ static int ime_config_internal(oconfig_item_t *ci)
 	int	 i;
 	int	 ret;
 
-	ret = run_command("ime-cfg-parse -g", &data, &data_size);
+	ret = run_command(IME_PATH_PREFIX"/ime-cfg-parse -g", &data,
+			  &data_size);
 	if (ret)
 		return ret;
 	/* P:I\n */
