@@ -27,4 +27,12 @@ int lustre_xml_parse(struct lustre_definition *definition, const char *xml_file)
 void lustre_entry_free(struct lustre_entry *entry);
 void lustre_entry_dump_active(struct lustre_entry *entry, int depth);
 void lustre_entry_dump(struct lustre_entry *entry, int depth);
+int
+lustre_option_name_extract(char *name,
+			   struct lustre_submit *submit,
+			   int *flag,
+			   struct lustre_submit_option **option);
+int
+lustre_option_init(struct lustre_submit_option *option,
+		   char *string);
 #endif /* LUSTRE_XML_H */

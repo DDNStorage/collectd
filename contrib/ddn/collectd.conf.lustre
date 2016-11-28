@@ -34,6 +34,33 @@ LoadPlugin lustre
     Type "ost_stats_read"
   </Item>
 
+# Example of ExtendedParse and FieldOption
+<ItemType>
+    Type "ost_jobstats"
+    <ExtendedParse>
+        # Parse the field job_id
+        Field "job_id"
+        # Match the pattern
+        Pattern "(.+)[.]([[:digit:]]+)"
+        <ExtendedField>
+            Index 1
+            Name procname
+        </ExtendedField>
+        <ExtendedField>
+            Index 2
+            Name uid
+        </ExtendedField>
+    </ExtendedParse>
+    TsdbTags "procname=${extendfield:procname} uid={extendfield:uid}"
+    <FieldOption>
+        Field "read_samples"
+        <Option>
+            Name type
+            Value "gauge"
+        </Option>
+    </FieldOption>
+</ItemType>
+
 # MDT stats
   <Item>
     Type "mdt_filestotal"

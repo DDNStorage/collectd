@@ -315,7 +315,7 @@ lustre_item_type_add(struct lustre_entry *entry,
 	list_add_tail(&item->lit_linkage, &entry->le_item_types);
 }
 
-static int
+int
 lustre_option_name_extract(char *name,
 			   struct lustre_submit *submit,
 			   int *flag,
@@ -349,7 +349,7 @@ lustre_option_name_extract(char *name,
 	return 0;
 }
 
-static int
+int
 lustre_option_init(struct lustre_submit_option *option,
 		   char *string)
 {
