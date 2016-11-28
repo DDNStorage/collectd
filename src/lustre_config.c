@@ -1002,6 +1002,140 @@ static int lustre_config_item(const oconfig_item_t *ci,
 	return (status);
 }
 
+static int lustre_config_option(const oconfig_item_t *ci,
+				struct lustre_field_type *field)
+{
+	int i;
+	int flag = 0;
+	struct lustre_submit_option *option = NULL;
+	char string[1024];
+	int inited = 0;
+	int status = 0;
+	char *value;
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+		if (strcasecmp ("Name", child->key) == 0) {
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Field option parse: failed to get value"
+				       " of \"%s\"", child->key);
+				break;
+			}
+			status = lustre_option_name_extract(value,
+							    &field->lft_submit,
+							    &flag,
+							    &option);
+			if (status) {
+				LERROR("XML: unkown option");
+				break;
+			}
+			free(value);
+		} else if (strcasecmp("Value", child->key) == 0) {
+			if (inited != 0) {
+				LERROR("Field option: more than one type");
+				status = -1;
+				break;
+			}
+
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Field option: failed to get value"
+				       " of \"%s\"", child->key);
+				break;
+			}
+			strncpy(string, value, 1024);
+			free(value);
+			inited = 1;
+		} else {
+			LERROR("Field option: invalid key \"%s\"",
+			       child->key);
+			status = -EINVAL;
+		}
+	}
+
+	if (status) {
+		return status;
+	}
+
+	if (flag == 0 || option == NULL) {
+		LERROR("Field option: option has no name");
+		return -1;
+	}
+
+	lustre_option_init(option, string);
+	return 0;
+}
+
+static int lustre_config_field_parse(const oconfig_item_t *ci,
+				     struct lustre_item_type *type)
+{
+	int i, j;
+	int status = 0;
+	char *value;
+	struct lustre_field_type *field = NULL;
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+		if (strcasecmp ("Field", child->key) == 0) {
+			if (field != NULL) {
+				status = -1;
+				LERROR("Field option parse: multiple field "
+				       "found");
+				break;
+			}
+
+			value = NULL;
+			status = lustre_config_get_string(child, &value);
+			if (status) {
+				LERROR("Field option parse: failed to get value"
+				       " of \"%s\"", child->key);
+				break;
+			}
+
+			for (j = 1; j <= type->lit_field_number; j++) {
+				if (strcmp(type->lit_field_array[j]->lft_name,
+					   value) == 0) {
+					field = type->lit_field_array[j];
+					break;
+				}
+			}
+
+			if (field == NULL) {
+				LERROR("Field option parse: failed to find"
+				       " field of \"%s\"", value);
+				status = -EINVAL;
+				free(value);
+				break;
+			}
+
+			free(value);
+		} else if (strcasecmp("Option", child->key) == 0) {
+			if (field == NULL) {
+				status = -1;
+				LERROR("Field option parse: no field "
+				       "found");
+				break;
+			}
+
+			status = lustre_config_option(child, field);
+			if (status) {
+				LERROR("Field option parse: failed to parse"
+				       " option");
+				break;
+			}
+		} else {
+			LERROR("Field option parse: invalid key \"%s\"",
+			       child->key);
+			status = -EINVAL;
+		}
+	}
+
+	return status;
+}
+
 static int lustre_config_item_type(const oconfig_item_t *ci,
 			      struct lustre_configs *conf)
 {
@@ -1051,6 +1185,13 @@ static int lustre_config_item_type(const oconfig_item_t *ci,
 				break;
 			}
 		} else if (strcasecmp("TsdbTags", child->key) == 0) {
+			if (type == NULL) {
+				LERROR("ItemType: wrong config file"
+				       " need to specify item type");
+				status = -1;
+				break;
+			}
+
 			value = NULL;
 			status = lustre_config_get_string(child, &value);
 			if (status) {
@@ -1071,6 +1212,19 @@ static int lustre_config_item_type(const oconfig_item_t *ci,
 			strncpy(type->lit_ext_tags, value,
 				MAX_TSDB_TAGS_LENGTH);
 			free(value);
+		} else if (strcasecmp("FieldOption", child->key) == 0) {
+			if (type == NULL) {
+				LERROR("ItemType: wrong config file"
+				       " need to specify item type");
+				status = -1;
+				break;
+			}
+
+			status = lustre_config_field_parse(child, type);
+			if (status) {
+				LERROR("ItemType: failed to do extented parse");
+				break;
+			}
 		}
 	}
 
