@@ -779,6 +779,7 @@ static int lustre_config_extended_parse(const oconfig_item_t *ci,
 				       " regex");
 				break;
 			}
+			extend->lite_regex_inited = 1;
 		} else if (strcasecmp("ExtendedField", child->key) == 0) {
 			status = lustre_config_extended_field(child, extend, type);
 			if (status) {
