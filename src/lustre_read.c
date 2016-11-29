@@ -291,8 +291,6 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	}
 
 out:
-	if (regex_inited)
-		regfree(&regex);
 	return status;
 }
 
@@ -578,8 +576,6 @@ static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
 
 	LINFO("status: %d tsdb tags: %s", status, data->lid_ext_tags);
 out:
-	if (regex_inited)
-		regfree(&regex);
 	return status;
 }
 
