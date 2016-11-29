@@ -180,7 +180,7 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	char key_field[MAX_SUBMIT_STRING_LENGTH];
 	const char *pattern = "\\$\\{(subpath|content|key):([^}]+)\\}";
 	static regex_t regex;
-	static int regex_inited;
+	static int regex_inited = 0;
 	int i;
 
 	if (regex_inited == 0) {
@@ -291,6 +291,8 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	}
 
 out:
+	if (regex_inited)
+		regfree(&regex);
 	return status;
 }
 
@@ -576,6 +578,8 @@ static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
 
 	LINFO("status: %d tsdb tags: %s", status, data->lid_ext_tags);
 out:
+	if (regex_inited)
+		regfree(&regex);
 	return status;
 }
 
