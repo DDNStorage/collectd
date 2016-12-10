@@ -131,8 +131,9 @@ LoadPlugin ssh
     #PublicKeyfile XXX
     #PrivateKeyfile XXX
     UserPassword user
+    IpcDir "/tmp"
     #SshKeyPassphrase XXX
-    ZeromqPort 1234
+    #ZeromqPort 1234 ->deprecated options
   </Common>
   <Item>
     Type "vd_c_rates"
