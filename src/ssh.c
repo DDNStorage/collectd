@@ -37,6 +37,7 @@
 #define MIN_CONNECTION_INTERVAL 2
 #define MAX_CONNECTION_INTERVAL 60
 #define MAX_FAILOVER_HOST_NUM	32
+#define DEFAULT_IPC_PATH	"/tmp"
 
 struct ssh_configs {
 	pthread_t bg_tid;
@@ -50,7 +51,7 @@ struct ssh_configs {
 	int  cur_host;
 	char *user_name;
 	char *user_password;
-	char *zeromq_port;
+	char *ipc_dir;
 
 	/* this can be null */
 	char *sshkey_passphrase;
@@ -429,8 +430,9 @@ static int init_client_zmq_connection(struct ssh_configs *ssh_configs)
 		ret = -errno;
 		goto failed;
 	}
-	snprintf(str, SSH_BUFSIZE, "tcp://localhost:%s",
-		 ssh_configs->zeromq_port);
+	snprintf(str, SSH_BUFSIZE, "ipc:///%s/%s.ipc",
+		      ssh_configs->ipc_dir ? : DEFAULT_IPC_PATH,
+		      ssh_configs->server_hosts[ssh_configs->cur_host]);
 	ret = zmq_connect(ssh_configs->requester, str);
 	if (ret) {
 		LERROR("ssh plugin: zmq client failed to connect, %s",
@@ -657,7 +659,9 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 			strerror(errno));
 		goto term_zmq;
 	}
-	snprintf(str, SSH_BUFSIZE, "tcp://*:%s", ssh_configs->zeromq_port);
+	snprintf(str, SSH_BUFSIZE, "ipc:///%s/%s.ipc",
+		      ssh_configs->ipc_dir ? : DEFAULT_IPC_PATH,
+		      ssh_configs->server_hosts[ssh_configs->cur_host]);
 	rc = zmq_bind(responder, str);
 	if (rc) {
 		LERROR("ssh plugin: failed to bind %s, %s", str,
@@ -978,32 +982,6 @@ static int check_server_host(const char *host)
 	return -EINVAL;
 }
 
-static int check_zeromq_port(const char *zeromq_port)
-{
-	unsigned long value;
-	char *ptr_parse_end = NULL;
-
-	value = strtoul(zeromq_port, &ptr_parse_end, 0);
-	if (ptr_parse_end && *ptr_parse_end != '\0') {
-		LERROR("ssh plugin: %s is not a vaild numeric value",
-			zeromq_port);
-		return -EINVAL;
-	}
-	/*
-	 * if we pass a negative number to strtoull, it will return an
-	 * unexpected number to us, so let's do the check ourselves.
-	 */
-	if (zeromq_port[0] == '-') {
-		LERROR("ssh plugin: %s: negative value is invalid",
-			zeromq_port);
-		return -EINVAL;
-	}
-	if (value < 1 || value >= 65536) {
-		LERROR("ssh plugin: %lu is out of range [1, 65535]", value);
-		return -ERANGE;
-	}
-	return 0;
-}
 
 static int ssh_config_init(struct lustre_configs *lc)
 {
@@ -1106,6 +1084,7 @@ static int ssh_config_private(oconfig_item_t *ci,
 {
 	int ret = 0;
 	char *value = NULL;
+	DIR *dir;
 	struct ssh_configs *ssh_configs = (struct ssh_configs *)
 					lustre_get_private_data(conf);
 
@@ -1139,10 +1118,18 @@ static int ssh_config_private(oconfig_item_t *ci,
 	} else if (strcasecmp("SshKeyPassphrase", ci->key) == 0) {
 		free(ssh_configs->sshkey_passphrase);
 		ssh_configs->sshkey_passphrase = value;
+	} else if (strcasecmp("IpcDir", ci->key) == 0) {
+		free(ssh_configs->ipc_dir);
+		dir = opendir(value);
+		if (!dir) {
+			LERROR("ssh plugin: failed to opendir %s",
+				ssh_configs->ipc_dir);
+		} else {
+			closedir(dir);
+		}
+		ssh_configs->ipc_dir = value;
 	} else if (strcasecmp("ZeromqPort", ci->key) == 0) {
-		free(ssh_configs->zeromq_port);
-		ret = check_zeromq_port(value);
-		ssh_configs->zeromq_port = value;
+		LERROR("ssh plugin: ZeromqPort is deprecated, ignore it");
 	} else {
 		free(value);
 		LERROR("ssh plugin: Common, The \"%s\" key is not allowed"
@@ -1171,7 +1158,7 @@ static void ssh_config_fini(struct lustre_configs *lc)
 	free(ssh_configs->known_hosts);
 	free(ssh_configs->user_password);
 	free(ssh_configs->sshkey_passphrase);
-	free(ssh_configs->zeromq_port);
+	free(ssh_configs->ipc_dir);
 }
 
 static int ssh_config_internal(oconfig_item_t *ci)
@@ -1209,8 +1196,7 @@ static int ssh_config_internal(oconfig_item_t *ci)
 
 	memset (callback_name, 0, sizeof (callback_name));
 	ssnprintf (callback_name, sizeof (callback_name),
-		   "ssh/%s/%s", ssh_configs->server_hosts[ssh_configs->cur_host],
-		   ssh_configs->zeromq_port);
+		   "ssh/%s", ssh_configs->server_hosts[ssh_configs->cur_host]);
 
 	rc = plugin_register_complex_read (/* group = */ NULL,
 				/* name      = */ callback_name,
