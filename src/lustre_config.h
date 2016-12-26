@@ -296,6 +296,8 @@ struct lustre_definition {
 	unsigned long long	  ld_query_times;
 	lustre_read_file_fn	  ld_read_file;
 	struct lustre_private_definition ld_private_definition;
+	/* used for tsdb tags */
+	char			 *extra_tags;
 };
 
 struct lustre_configs {

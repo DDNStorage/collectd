@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <regex.h>
 #include <errno.h>
 #include "lustre_common.h"
 #include "lustre_config.h"
@@ -385,6 +386,8 @@ void lustre_definition_fini(struct lustre_definition *definition)
 		lustre_entry_free(definition->ld_root);
 	if (definition->ld_filename)
 		free(definition->ld_filename);
+	if (definition->extra_tags)
+		free(definition->extra_tags);
 	definition->ld_root = NULL;
 	definition->ld_filename = NULL;
 	definition->ld_inited = 0;
@@ -473,6 +476,52 @@ static int lustre_config_get_int (const oconfig_item_t *ci, int *ret_value) /* {
 	return 0;
 }
 
+static inline char* lustre_check_extra_tags(char *extra_tags)
+{
+	char *p = extra_tags;
+	char *key_point;
+	int ret;
+	regex_t reg;
+	const char *pattern = "^[a-z]*=.*";
+	int n;
+
+	char *ret_p = calloc(MAX_TSDB_TAGS_LENGTH - 1, 1);
+	if (!ret_p)
+		return NULL;
+
+	while (p) {
+		while ((key_point = strsep(&p, ",")) != NULL) {
+			while (*key_point == ' ')
+				key_point++;
+			if (*key_point == '\0')
+				continue;
+			break;
+		}
+		regcomp(&reg, pattern, REG_EXTENDED);
+		ret = regexec(&reg, key_point, 0, NULL, 0);
+		regfree(&reg);
+		n = MAX_TSDB_TAGS_LENGTH - strlen(ret_p) - 1;
+		if (ret == 0) {
+			if (n > strlen(key_point)) {
+				strncat(ret_p, key_point, strlen(key_point));
+			} else {
+				LERROR("Common: ignore max buffer");
+				break;
+			}
+			strncat(ret_p, " ", 1);
+		} else {
+			LERROR("Common: ignore invalid extra tag: %s",
+			       key_point);
+		}
+	}
+
+	if (strlen(ret_p) < 3) {
+		LERROR("Common: invalid extra tags: %s", extra_tags);
+		return NULL;
+	}
+	return ret_p;
+}
+
 static int lustre_config_common(const oconfig_item_t *ci,
 				struct lustre_configs *conf)
 {
@@ -482,6 +531,7 @@ static int lustre_config_common(const oconfig_item_t *ci,
 	char *root_path = NULL;
 	struct lustre_private_definition ld_private_definition =
 				conf->lc_definition.ld_private_definition;
+	char *extra_tags = NULL;
 
 	for (i = 0; i < ci->children_num; i++) {
 		oconfig_item_t *child = ci->children + i;
@@ -499,6 +549,15 @@ static int lustre_config_common(const oconfig_item_t *ci,
 			if (status) {
 				LERROR("Common: failed to init definition");
 			}
+		} else if (strcasecmp("Extra_tags", child->key) == 0) {
+			free(extra_tags);
+			extra_tags = NULL;
+			status = lustre_config_get_string(child, &extra_tags);
+			if (status)
+				LERROR("Common: failed to get extra tags");
+			conf->lc_definition.extra_tags =
+					lustre_check_extra_tags(extra_tags);
+			free(extra_tags);
 		}  else if (strcasecmp("RootPath", child->key) == 0) {
 			/* in case this is specified mutiple times */
 			free(root_path);
