@@ -302,7 +302,8 @@ static int lustre_submit(struct lustre_submit *submit,
 			 int content_index,
 			 uint64_t value,
 			 const char *ext_tsdb_tags,
-			 int ext_tags_used)
+			 int ext_tags_used,
+			 const char *ext_tags)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
@@ -312,6 +313,7 @@ static int lustre_submit(struct lustre_submit *submit,
 	char tsdb_name[MAX_SUBMIT_STRING_LENGTH];
 	char tsdb_tags[MAX_TSDB_TAGS_LENGTH];
 	int status;
+	int n;
 
 	status = lustre_submit_option_get(&submit->ls_host,
 					  path_head, field_types,
@@ -399,6 +401,16 @@ static int lustre_submit(struct lustre_submit *submit,
 				MAX_TSDB_TAGS_LENGTH - 1);
 		}
 	}
+	n = MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags);
+	if (n > strlen(ext_tags) + 1) {
+		if (strlen(tsdb_tags) > 0)
+			strncat(tsdb_tags, " ", 1);
+		strncat(tsdb_tags, ext_tags,
+			MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags));
+	} else {
+		LERROR("submit: ignore overflow extra tsdb tags");
+	}
+
 	lustre_instance_submit(host, plugin, plugin_instance,
 			       type, type_instance,
 			       tsdb_name, tsdb_tags,
@@ -424,7 +436,8 @@ static int lustre_data_submit(struct lustre_item_type *type,
 				      i,
 				      data->lid_fields[i].lf_value,
 				      data->lid_ext_tags,
-				      data->lid_ext_tags_used);
+				      data->lid_ext_tags_used,
+				      type->lit_definition->extra_tags);
 	}
 
 	return 0;

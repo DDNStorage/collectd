@@ -126,6 +126,7 @@ LoadPlugin ssh
   <Common>
     DefinitionFile "/etc/sfa-0.1_definition.xml"
     ServerHost "10.53.31.1 10.53.31.2"
+    Extra_tags "IP=10.53.31.1, HOST_NAME=host1"
     UserName user
     #KnownhostsFile "/root/.ssh/known_hosts"
     #PublicKeyfile XXX
