@@ -402,12 +402,12 @@ static int lustre_submit(struct lustre_submit *submit,
 		}
 	}
 	n = MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags);
-	if (n > strlen(ext_tags) + 1) {
+	if (ext_tags && n > strlen(ext_tags) + 1) {
 		if (strlen(tsdb_tags) > 0)
 			strncat(tsdb_tags, " ", 1);
 		strncat(tsdb_tags, ext_tags,
 			MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags));
-	} else {
+	} else if (ext_tags){
 		LERROR("submit: ignore overflow extra tsdb tags");
 	}
 
