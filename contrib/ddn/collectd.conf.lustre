@@ -167,3 +167,56 @@ LoadPlugin ssh
     Type "pd_write_iosize"
   </Item>
 </Plugin>
+
+LoadPlugin filedata
+# configurations to collect infiniband counters
+<Plugin "filedata">
+  <Common>
+    DefinitionFile "/etc/infiniband-0.1_definition.xml"
+  </Common>
+  <Item>
+    Type "excessive_buffer_overrun_errors"
+  </Item>
+  <Item>
+    Type "link_error_recovery"
+  </Item>
+  <Item>
+    Type "local_link_integrity_errors"
+  </Item>
+  <Item>
+    Type "port_rcv_constraint_errors"
+  </Item>
+  <Item>
+    Type "port_rcv_data"
+  </Item>
+  <Item>
+    Type "port_rcv_errors"
+  </Item>
+  <Item>
+    Type "port_rcv_packets"
+  </Item>
+  <Item>
+    Type "port_rcv_remote_physical_errors"
+  </Item>
+  <Item>
+    Type "port_xmit_constraint_errors"
+  </Item>
+  <Item>
+    Type "port_xmit_data"
+  </Item>
+  <Item>
+    Type "port_xmit_discards"
+  </Item>
+  <Item>
+    Type "port_xmit_packets"
+  </Item>
+  <Item>
+    Type "symbol_error"
+  </Item>
+  <Item>
+    Type "VL15_dropped"
+  </Item>
+  <Item>
+    Type "port_rcv_switch_relay_errors"
+  </Item>
+</Plugin>
