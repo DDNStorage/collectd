@@ -482,7 +482,7 @@ static inline char* lustre_check_extra_tags(char *extra_tags)
 	char *key_point;
 	int ret;
 	regex_t reg;
-	const char *pattern = "^[a-z]*=.*";
+	const char *pattern = "^[A-Za-z]*=.*";
 	int n;
 
 	char *ret_p = calloc(MAX_TSDB_TAGS_LENGTH - 1, 1);
@@ -569,8 +569,8 @@ static int lustre_config_common(const oconfig_item_t *ci,
 			status = ld_private_definition.ld_private_config(child,
 									 conf);
 		} else {
-			LERROR("Common: The \"%s\" key is not allowed"
-					"and will be ignored.", child->key);
+			LERROR("Common: The \"%s\" key is not allowed "
+			       "and will be ignored.", child->key);
 		}
 		if (status != 0)
 			break;

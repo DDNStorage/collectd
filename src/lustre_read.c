@@ -158,6 +158,35 @@ static int lustre_key_field_get(char *field, size_t size, const char *name)
 	return 0;
 }
 
+static int lustre_extag_value_find(const char *extra_tags,
+				   char *tag_value,
+				   const char *name)
+{
+	char *val;
+	size_t count, len;
+	char key[MAX_TSDB_TAGS_LENGTH];
+
+	snprintf(key, sizeof(key), "%s=", name);
+	len = strlen(extra_tags);
+	val = strstr(extra_tags, key);
+	if (val == NULL)
+		return -EINVAL;
+
+	val += strlen(key); /* skip the prefix key */
+	while (val < extra_tags + len && isspace(*val))
+		val++;
+
+	count = 0;
+	while (val < extra_tags + len && isalnum(*val)) {
+		tag_value[count] = *val;
+		++count;
+		++val;
+	}
+
+	tag_value[count] = '\0';
+	return 0;
+}
+
 static int lustre_submit_option_get(struct lustre_submit_option *option,
 				    struct list_head *path_head,
 				    struct lustre_field_type **field_types,
@@ -165,7 +194,8 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				    int content_field_number,
 				    int content_index,
 				    char *value,
-				    int size)
+				    int size,
+				    const char *ext_tags)
 {
 	int status = 0;
 	regmatch_t matched_fields[3];
@@ -178,7 +208,8 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	struct lustre_subpath_field *subpath_field;
 	struct lustre_field *content_field;
 	char key_field[MAX_SUBMIT_STRING_LENGTH];
-	const char *pattern = "\\$\\{(subpath|content|key):([^}]+)\\}";
+	char tag_value[MAX_TSDB_TAGS_LENGTH];
+	const char *pattern = "\\$\\{(subpath|content|key|extra_tag):([^}]+)\\}";
 	static regex_t regex;
 	static int regex_inited = 0;
 	int i;
@@ -262,6 +293,18 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 				break;
 			}
 			match_value = key_field;
+		} else if (strcmp(type, "extra_tag") == 0) {
+			assert(strlen(ext_tags) < MAX_TSDB_TAGS_LENGTH);
+			status = lustre_extag_value_find(ext_tags,
+							 tag_value, name);
+			if (status) {
+				ERROR("failed to get value of extra tag %s %s",
+				      name, ext_tags);
+				break;
+			}
+			LINFO("Get extra_tag KV %s:%s from tags \"%s\"",
+			      name, tag_value, ext_tags);
+			match_value = tag_value;
 		} else {
 			ERROR("unknown type \"%s\"", type);
 			status = -EINVAL;
@@ -319,7 +362,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, host,
-					  MAX_SUBMIT_STRING_LENGTH);
+					  MAX_SUBMIT_STRING_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get host");
 		return status;
@@ -329,7 +373,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, plugin,
-					  MAX_SUBMIT_STRING_LENGTH);
+					  MAX_SUBMIT_STRING_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get plugin");
 		return status;
@@ -339,7 +384,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, plugin_instance,
-					  MAX_SUBMIT_STRING_LENGTH);
+					  MAX_SUBMIT_STRING_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get plugin_instance");
 		return status;
@@ -349,7 +395,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, type,
-					  MAX_SUBMIT_STRING_LENGTH);
+					  MAX_SUBMIT_STRING_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get type");
 		return status;
@@ -359,7 +406,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, type_instance,
-					  MAX_SUBMIT_STRING_LENGTH);
+					  MAX_SUBMIT_STRING_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get type_instance");
 		return status;
@@ -369,7 +417,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, tsdb_name,
-					  MAX_SUBMIT_STRING_LENGTH);
+					  MAX_SUBMIT_STRING_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get tsdb_name");
 		return status;
@@ -379,7 +428,8 @@ static int lustre_submit(struct lustre_submit *submit,
 					  path_head, field_types,
 					  fields, content_field_number,
 					  content_index, tsdb_tags,
-					  MAX_TSDB_TAGS_LENGTH);
+					  MAX_TSDB_TAGS_LENGTH,
+					  ext_tags);
 	if (status) {
 		ERROR("submit: failed to get tsdb_name");
 		return status;
