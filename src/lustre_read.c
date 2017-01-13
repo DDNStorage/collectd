@@ -163,26 +163,28 @@ static int lustre_extag_value_find(const char *extra_tags,
 				   const char *name)
 {
 	char *val;
-	size_t count, len;
+	size_t len, count = 0;
 	char key[MAX_TSDB_TAGS_LENGTH];
 
 	snprintf(key, sizeof(key), "%s=", name);
 	len = strlen(extra_tags);
 	val = strstr(extra_tags, key);
-	if (val == NULL)
-		return -EINVAL;
+	if (val == NULL) {
+		WARNING("Not found key '%s' from extra_tags '%s'",
+			name, extra_tags);
+		goto out;
+	}
 
 	val += strlen(key); /* skip the prefix key */
 	while (val < extra_tags + len && isspace(*val))
 		val++;
 
-	count = 0;
 	while (val < extra_tags + len && isalnum(*val)) {
 		tag_value[count] = *val;
 		++count;
 		++val;
 	}
-
+out:
 	tag_value[count] = '\0';
 	return 0;
 }
