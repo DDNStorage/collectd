@@ -710,17 +710,16 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 				rc, receive_buf);
 			/* if we failed here, we need let sender know we failed here */
 			memcpy(result, ERROR_FORMAT, strlen(ERROR_FORMAT));
-			strncat(result, strerror(-rc),
-				result_len - strlen(ERROR_FORMAT));
 			/* connectio have been broken */
 			if (rc == -EIDRM)
 				break;
+			rc =  strlen(ERROR_FORMAT);
 		}
 
 		/* Step 4: return results to collectd */
-		zmq_msg_init_size(&reply, result_len);
-		memset(zmq_msg_data(&reply), 0, result_len);
-		memcpy(zmq_msg_data(&reply), result, result_len);
+		zmq_msg_init_size(&reply, rc);
+		memset(zmq_msg_data(&reply), 0, rc);
+		memcpy(zmq_msg_data(&reply), result, rc);
 #ifdef HAVE_ZMQ_NEW_VER
 		rc = zmq_msg_send(&reply, responder, 0);
 #else
