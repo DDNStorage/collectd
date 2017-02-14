@@ -43,13 +43,13 @@ static void lustre_instance_submit(const char *host,
 	int status;
 
 	if (strcmp(type, "derive") == 0) {
-		values[0].derive = value;
+		values[0].derive = (derive_t)value;
 	} else if (strcmp(type, "gauge") == 0) {
-		values[0].gauge = value;
+		values[0].gauge = (gauge_t)value;
 	} else if (strcmp(type, "counter") == 0) {
-		values[0].counter = value;
+		values[0].counter = (counter_t)value;
 	} else if (strcmp(type, "absolute") == 0) {
-		values[0].absolute = value;
+		values[0].absolute = (absolute_t)value;
 	} else {
 		ERROR("unsupported type %s\n", type);
 		return;
@@ -85,7 +85,7 @@ static void lustre_instance_submit(const char *host,
 	      "type_instance %s, "
 	      "tsdb_name %s, "
 	      "tsdb_tags %s, "
-      	      "value %llu",
+	      "value %"PRIu64,
 	      vl.host,
 	      vl.plugin,
 	      vl.plugin_instance,
@@ -93,7 +93,7 @@ static void lustre_instance_submit(const char *host,
 	      vl.type_instance,
 	      tsdb_name,
 	      tsdb_tags,
-	      (unsigned long long)vl.values[0].derive);
+	      value);
 
 	plugin_dispatch_values(&vl);
 out:
