@@ -169,6 +169,8 @@ lustre_entry_free(struct lustre_entry *entry)
 #define LUSTRE_XML_REGULAR_EXPRESSION	"regular_expression"
 #define LUSTRE_XML_SUBPATH_FIELD 	"subpath_field"
 #define LUSTRE_XML_CONTEXT 		"context"
+#define LUSTRE_XML_CONTEXT_START	"start_string"
+#define LUSTRE_XML_CONTEXT_END		"end_string"
 
 static int string2mode(const char *string, mode_t *mode)
 {
@@ -355,6 +357,50 @@ lustre_option_init(struct lustre_submit_option *option,
 {
 	strncpy(option->lso_string, string, MAX_NAME_LENGH);
 	return 0;
+}
+
+static int
+lustre_context_option_parse(struct lustre_item_type *item, xmlNode *node)
+{
+	xmlNode *tmp;
+	int status = 0;
+	char *value;
+	int start = 0;
+	int end = 0;
+
+	for (tmp = node; tmp; tmp = tmp->next) {
+		if (tmp->type != XML_ELEMENT_NODE)
+			continue;
+
+		if (strcmp((char *)tmp->name, LUSTRE_XML_CONTEXT_START) == 0) {
+			value = (char *)xmlNodeGetContent(tmp);
+			strncpy(item->lit_context_start, value, MAX_NAME_LENGH);
+			xmlFree(value);
+			start = 1;
+		} else if (strcmp((char *)tmp->name, LUSTRE_XML_CONTEXT_END)
+			   == 0) {
+			value = (char *)xmlNodeGetContent(tmp);
+			strncpy(item->lit_context_end, value, MAX_NAME_LENGH);
+			xmlFree(value);
+			end = 1;
+		} else {
+			LERROR("XML: option has a unknown child %s", tmp->name);
+			status = -1;
+			break;
+		}
+	}
+
+	if (status)
+		return status;
+
+	if (!start && !end)
+		return 0;
+	else if (start && !end)
+		return 1;
+	else if (start && end)
+		return 2;
+
+	return -1;
 }
 
 static int
@@ -583,6 +629,17 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 			}
 			item->lit_flags |= LUSTRE_ITEM_FLAG_FIELD;
 		} else if (strcmp((char *)tmp->name, LUSTRE_XML_CONTEXT) == 0) {
+			status = lustre_context_option_parse(item,
+							     tmp->children);
+			if (status > 0) {
+				item->lit_flags |=
+					LUSTRE_ITEM_FLAG_CONTEXT_SUBTYPE;
+				status = 0;
+				continue;
+			} else if (status < 0) {
+				break;
+			}
+
 			value = (char*)xmlNodeGetContent(tmp);
 			if (strlen(value) > MAX_NAME_LENGH) {
 				status = -1;

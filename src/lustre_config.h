@@ -100,10 +100,11 @@ struct lustre_field {
 	int				 lf_allowed;
 };
 
-#define LUSTRE_ITEM_FLAG_NAME		0x00000001
-#define LUSTRE_ITEM_FLAG_PATTERN	0x00000002
-#define LUSTRE_ITEM_FLAG_FIELD		0x00000004
-#define LUSTRE_ITEM_FLAG_CONTEXT	0x00000008
+#define LUSTRE_ITEM_FLAG_NAME			0x00000001
+#define LUSTRE_ITEM_FLAG_PATTERN		0x00000002
+#define LUSTRE_ITEM_FLAG_FIELD			0x00000004
+#define LUSTRE_ITEM_FLAG_CONTEXT		0x00000008
+#define LUSTRE_ITEM_FLAG_CONTEXT_SUBTYPE	0x00000010
 #define LUSTRE_ITEM_FLAG_FILLED		(LUSTRE_ITEM_FLAG_NAME | \
 				  	 LUSTRE_ITEM_FLAG_PATTERN | \
 				  	 LUSTRE_ITEM_FLAG_FIELD)
@@ -132,6 +133,8 @@ struct lustre_item_type {
 	int					  lit_flags;
 	char					  lit_context[MAX_NAME_LENGH + 1];
 	regex_t				 	  lit_context_regex;
+	char					  lit_context_start[MAX_NAME_LENGH + 1];
+	char					  lit_context_end[MAX_NAME_LENGH + 1];
 };
 
 struct lustre_item_rule {

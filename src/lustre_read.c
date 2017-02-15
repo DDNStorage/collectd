@@ -849,12 +849,55 @@ out:
 	return status;
 }
 
+static int lustre_parse_context_subtype(struct lustre_item_type *type,
+					const char *content,
+					struct list_head *path_head)
+{
+	const char *previous = content;
+	char *buf;
+	int status = 0;
+	char *p_start = NULL;
+	const char *p_end = content + strlen(content) - 1;
+
+	buf = malloc(strlen(content) + 1);
+	if (buf == NULL) {
+		ERROR("parse: not enough memory");
+		status = -1;
+		goto out;
+	}
+
+	/* avoid infinite loop */
+	while (previous - content < strlen(content)) {
+		p_start = strstr(previous, type->lit_context_start);
+		if (!p_start)
+			break;
+
+		if (strlen(type->lit_context_end)) {
+			p_end = strstr(previous, type->lit_context_end);
+			if (!p_end)
+				break;
+		}
+		strncpy(buf, previous, p_end - p_start + 1);
+
+		status = _lustre_parse(type, buf, path_head);
+		if (status)
+			break;
+		previous += (p_end - p_start + 1);
+	}
+
+	free(buf);
+out:
+	return status;
+}
+
 static int lustre_parse(struct lustre_item_type *type,
 			const char *content,
 			struct list_head *path_head)
 {
 	if (type->lit_flags & LUSTRE_ITEM_FLAG_CONTEXT)
 		return lustre_parse_context(type, content, path_head);
+	else if (type->lit_flags & LUSTRE_ITEM_FLAG_CONTEXT_SUBTYPE)
+		return lustre_parse_context_subtype(type, content, path_head);
 	else
 		return _lustre_parse(type, content, path_head);
 }
