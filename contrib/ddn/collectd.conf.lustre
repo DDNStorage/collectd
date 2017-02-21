@@ -132,6 +132,7 @@ LoadPlugin ssh
     #PublicKeyfile XXX
     #PrivateKeyfile XXX
     UserPassword user
+    SshTerminator "SFA14KX RAID[1]$"
     IpcDir "/tmp"
     #SshKeyPassphrase XXX
     #ZeromqPort 1234 ->deprecated options
