@@ -52,6 +52,7 @@ struct ssh_configs {
 	char *user_name;
 	char *user_password;
 	char *ipc_dir;
+	char *terminator;
 
 	/* this can be null */
 	char *sshkey_passphrase;
@@ -191,7 +192,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 				    int sock, char *command,
 				    int command_len,
 				    void **result, int *result_len,
-				    int extra_len)
+				    char *end_string)
 {
 	int rc;
 	char buffer[256];
@@ -201,6 +202,10 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 	const char numfds = 1;
 	struct pollfd pfds[numfds];
 	int len;
+	int retry = 0;
+	int total_retry = (int)CDTIME_T_TO_TIME_T(plugin_get_interval()) << 1;
+	int count = 0;
+
 
 	/* Prepare to use poll */
 	memset(pfds, 0, sizeof(struct pollfd) * numfds);
@@ -244,6 +249,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 
 	nbytes = 0;
 	pre_nbytes = 0;
+	count = 0;
 	for ( ; ; ) {
 		/* loop until we block */
 		do {
@@ -263,30 +269,43 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 				nbytes += rc;
 			}
 		} while (rc > 0);
+
 		if (rc < 0 && rc != LIBSSH2_ERROR_EAGAIN) {
 			LERROR("ssh plugin: libssh2_channel_read error: %s",
 				strerror(errno));
 			return rc;
-		}
-		if (rc == LIBSSH2_ERROR_EAGAIN && pre_nbytes != nbytes)
-			waitsocket(sock, session);
-		else
+		} else if (rc == 0) {
 			break;
+		}
+
+		/*
+		 * We break out in following case:
+		 * 1. could not read more, end of string matched
+		 * 2. we could not read more if timeout happen.
+		 */
+		p = *result;
+		if (pre_nbytes == nbytes &&
+		    end_string && nbytes > strlen(end_string) << 1 &&
+		    strstr(p + nbytes - strlen(end_string) - 1, end_string)) {
+			LINFO("ssh plugin: tried: %d times to match ssh terminator: %s",
+			       count, end_string);
+			break;
+		} else if (pre_nbytes == nbytes && retry < total_retry) {
+			waitsocket(sock, session);
+			retry++;
+			count++;
+		} else if (pre_nbytes != nbytes) {
+			waitsocket(sock, session);
+			retry = 0;
+			count++;
+		} else {
+			LERROR("ssh plugin: timeout but without "
+				"ssh terminator found, considering enlarge timeout or check terminator?");
+			return -ETIMEDOUT;
+		}
 		pre_nbytes = nbytes;
 	}
-	/* filter output here */
-	len = strlen(command) + 1;
-	if (extra_len && nbytes > len + extra_len) {
-		/* clear command parts */
-		memmove(*result, *result + len, nbytes - len);
-		memset(*result + nbytes - len, 0, len);
 
-		/* clear end string like '[localhost@build]$' */
-		memmove(*result, *result, nbytes - len - extra_len);
-		memset(*result + nbytes - len - extra_len, 0, extra_len);
-		return nbytes - len - extra_len;
-	}
-	memset(*result, 0, *result_len);
 	return nbytes;
 }
 
@@ -627,7 +646,6 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 	char *receive_buf = NULL;
 	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
 	int result_len = SSH_RESULTS_BUFSIZE;
-	int extra_len = 0;
 	char str[SSH_BUFSIZE];
 
 	receive_buf = calloc(receive_buf_len, 1);
@@ -678,17 +696,11 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 	pthread_cond_signal(&ssh_configs->cond_t);
 	pthread_mutex_unlock(&ssh_configs->ssh_lock);
 
-	/* pre-run to ignore login messages */
+	 /* pre-run to ignore login messages */
 	rc = execute_remote_processes(session, channel, sock, receive_buf,
-				      receive_buf_len, &result, &result_len, 0);
-	if (rc < 0)
-		LERROR("ssh plugin: failed to pre-run null command");
+                                      receive_buf_len, &result, &result_len,
+				      ssh_configs->terminator);
 
-	/* calculate extra len here */
-	rc = execute_remote_processes(session, channel, sock, receive_buf,
-				      receive_buf_len, &result, &result_len, 0);
-	if (rc > 0)
-		extra_len = rc / 2;
 
 	while (1) {
 		/* Step 1: start a zeromq demon to listen request */
@@ -704,7 +716,8 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 		/* Step 3: execute remote process */
 		rc = execute_remote_processes(session, channel, sock,
 					      receive_buf, receive_buf_len,
-					      &result, &result_len, extra_len);
+					      &result, &result_len,
+					      ssh_configs->terminator);
 		if (rc < 0) {
 			LERROR("ssh plugin: failed to execute remote command, rc %d, %s",
 				rc, receive_buf);
@@ -834,6 +847,10 @@ static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 	if (!ssh_configs->server_hosts || !ssh_configs->user_name
 	    || !ssh_configs->num_hosts) {
 		LERROR("ssh plugin: At least give one host and user");
+		return -EINVAL;
+	}
+	if (!ssh_configs->terminator) {
+		LERROR("ssh plugin: Please specify ssh terminal terminator");
 		return -EINVAL;
 	}
 	if (!ssh_configs->public_keyfile &&
@@ -1117,6 +1134,9 @@ static int ssh_config_private(oconfig_item_t *ci,
 	} else if (strcasecmp("SshKeyPassphrase", ci->key) == 0) {
 		free(ssh_configs->sshkey_passphrase);
 		ssh_configs->sshkey_passphrase = value;
+	} else if (strcasecmp("SshTerminator", ci->key) == 0) {
+		free(ssh_configs->terminator);
+		ssh_configs->terminator = value;
 	} else if (strcasecmp("IpcDir", ci->key) == 0) {
 		free(ssh_configs->ipc_dir);
 		dir = opendir(value);
@@ -1158,6 +1178,7 @@ static void ssh_config_fini(struct lustre_configs *lc)
 	free(ssh_configs->user_password);
 	free(ssh_configs->sshkey_passphrase);
 	free(ssh_configs->ipc_dir);
+	free(ssh_configs->terminator);
 }
 
 static int ssh_config_internal(oconfig_item_t *ci)
