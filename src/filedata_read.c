@@ -857,6 +857,7 @@ static int filedata_parse_context_subtype(struct filedata_item_type *type,
 	char *buf;
 	int status = 0;
 	char *p_start = NULL;
+	size_t start_len = strlen(type->fit_context_start);
 	const char *p_end = content + strlen(content) - 1;
 
 	buf = malloc(strlen(content) + 1);
@@ -872,17 +873,19 @@ static int filedata_parse_context_subtype(struct filedata_item_type *type,
 		if (!p_start)
 			break;
 
+		p_start += start_len;
+
 		if (strlen(type->fit_context_end)) {
-			p_end = strstr(previous, type->fit_context_end);
+			p_end = strstr(p_start, type->fit_context_end);
 			if (!p_end)
 				break;
 		}
-		strncpy(buf, previous, p_end - p_start + 1);
+		strncpy(buf, p_start, p_end - p_start + 1);
 
 		status = _filedata_parse(type, buf, path_head);
 		if (status)
 			break;
-		previous += (p_end - p_start + 1);
+		previous = p_end;
 	}
 
 	free(buf);
