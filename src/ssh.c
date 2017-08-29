@@ -309,8 +309,33 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 	return nbytes;
 }
 
+static void send_keepalive_if_needed(void *zmq_socket, LIBSSH2_SESSION *session)
+{
+	zmq_pollitem_t items[1];
+	int next_seconds = 0;
+	int ret;
+
+	while (zmq_socket && session) {
+		items[0].socket = zmq_socket;
+		items[0].events = ZMQ_POLLIN;
+		ret = zmq_poll(items, 1, 10000);
+		if (ret == 0) {
+			DEBUG("ssh plugin: send keepalive messages after 10s timeout");
+			ret = libssh2_keepalive_send(session, &next_seconds);
+			if (ret)
+				FERROR("ssh plugin: ignored keepalive error: %d", ret);
+		} else {
+			if (ret < 0)
+				FERROR("ssh plugin: zmq_poll return error: %d", ret);
+			break;
+		}
+	}
+
+}
+
 static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
-			     int flags, char **buf, int *len)
+			     int flags, char **buf, int *len,
+			     LIBSSH2_SESSION *session)
 {
 	int ret = 0;
 	int msg_len = 0;
@@ -334,6 +359,9 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 			FERROR("ssh plugin: zmq_msg_init failed");
 			goto free_mem;
 		}
+
+		/* send keepalive messages if necessary */
+		send_keepalive_if_needed(responder, session);
 #ifdef HAVE_ZMQ_NEW_VER
 		ret = zmq_msg_recv(request, responder, 0);
 #else
@@ -701,11 +729,14 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
                                       receive_buf_len, &result, &result_len,
 				      ssh_configs->terminator);
 
+	/* keepalive message sent every 10s */
+	libssh2_keepalive_config(session, 0, 10);
 
 	while (1) {
 		/* Step 1: start a zeromq demon to listen request */
 		rc = zmq_msg_recv_once(&request, responder, 0,
-				       &receive_buf, &receive_buf_len);
+				       &receive_buf, &receive_buf_len,
+				       session);
 		if (rc < 0) {
 			FERROR("ssh plugin: failed to receive message: ret: %d %s",
 				rc, strerror(errno));
@@ -939,7 +970,7 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size,
 	 * Case3: we could not receive anything, timeout happen.
 	 */
 	ret = zmq_msg_recv_once(&reply, ssh_configs->requester, 0,
-				&receive_buf, &receive_buf_len);
+				&receive_buf, &receive_buf_len, NULL);
 	if (ret < 0) {
 		FERROR("ssh plugin: failed to receive msg, %s",
 			strerror(errno));
