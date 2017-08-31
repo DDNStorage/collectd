@@ -36,8 +36,23 @@
 #define ERROR_FORMAT ("ERROR: FAILED TO EXECUTE REMOTE COMMAND: ")
 #define MIN_CONNECTION_INTERVAL 2
 #define MAX_CONNECTION_INTERVAL 60
-#define MAX_FAILOVER_HOST_NUM	32
 #define DEFAULT_IPC_PATH	"/tmp"
+
+/* per server configuration */
+struct ssh_server_host {
+	char *host_name;
+	char *user_name;
+	char *user_password;
+	char *ipc_dir;
+	char *terminator;
+
+	char *sshkey_passphrase;
+	char *public_keyfile;
+	char *private_keyfile;
+	char *known_hosts;
+
+	struct list_head host_linkage;
+};
 
 struct ssh_configs {
 	pthread_t bg_tid;
@@ -46,20 +61,10 @@ struct ssh_configs {
 
 	void *context;
 	void *requester;
-	char *server_hosts[MAX_FAILOVER_HOST_NUM];
-	int  num_hosts;
-	int  cur_host;
-	char *user_name;
-	char *user_password;
-	char *ipc_dir;
-	char *terminator;
 
-	/* this can be null */
-	char *sshkey_passphrase;
-	char *public_keyfile;
-	char *private_keyfile;
-	char *known_hosts;
-	int bg_running: 1;
+	struct list_head hosts_link_head;
+	struct ssh_server_host *active_host; /* for failover purpose */
+	int bg_running:1;
 };
 
 struct ssh_entry {
@@ -97,10 +102,11 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 	size_t len;
 	int type;
 	LIBSSH2_KNOWNHOSTS *nh;
-	const char *hostname = ssh_configs->server_hosts[ssh_configs->cur_host];
+	struct ssh_server_host *server_host = ssh_configs->active_host;
+	const char *hostname = server_host->host_name;
 
 	/* No host file imply StrictHostKeyChecking=no */
-	if (!ssh_configs->known_hosts)
+	if (!server_host->known_hosts)
 		return 0;
 
 	nh = libssh2_knownhost_init(session);
@@ -117,7 +123,7 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 	 * 2) skip unsupported format to walkaround it.
 	 *
 	 */
-	ret = libssh2_knownhost_readfile(nh, ssh_configs->known_hosts,
+	ret = libssh2_knownhost_readfile(nh, server_host->known_hosts,
 					 LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 	if (ret < 0)
 		FERROR("ssh plugin: ignored libssh2_knownhost_readfile return ret: %d", ret);
@@ -233,8 +239,8 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 		pre_nbytes = nbytes;
 	}
 	if (rc < 0 && rc != LIBSSH2_ERROR_EAGAIN) {
-		FERROR("ssh plugin: libssh2_channel_write error: %s",
-			strerror(errno));
+		/* errno is 0 in this case */
+		FERROR("ssh plugin: libssh2_channel_write error: %d", rc);
 		return rc;
 	}
 
@@ -419,18 +425,19 @@ static int ssh_userauth_connection(LIBSSH2_SESSION *session,
 				   struct ssh_configs *ssh_configs)
 {
 	int rc;
+	struct ssh_server_host *server_host = ssh_configs->active_host;
 
 	while ((rc = libssh2_userauth_publickey_fromfile(session,
-		ssh_configs->user_name,
-		ssh_configs->public_keyfile,
-		ssh_configs->private_keyfile,
-		ssh_configs->sshkey_passphrase)) == LIBSSH2_ERROR_EAGAIN);
+		server_host->user_name,
+		server_host->public_keyfile,
+		server_host->private_keyfile,
+		server_host->sshkey_passphrase)) == LIBSSH2_ERROR_EAGAIN);
 	if (rc == 0)
 		return 0;
-	if (!ssh_configs->user_password)
+	if (!server_host->user_password)
 		return -EPERM;
-	while ((rc = libssh2_userauth_password(session, ssh_configs->user_name,
-		ssh_configs->user_password)) == LIBSSH2_ERROR_EAGAIN);
+	while ((rc = libssh2_userauth_password(session, server_host->user_name,
+		server_host->user_password)) == LIBSSH2_ERROR_EAGAIN);
 	if (rc == 0)
 		return 0;
 	return -EPERM;
@@ -457,6 +464,7 @@ static int init_client_zmq_connection(struct ssh_configs *ssh_configs)
 {
 	int ret;
 	char str[SSH_BUFSIZE];
+	struct ssh_server_host *server_host = ssh_configs->active_host;
 
 	/* init zeromq client here */
 #ifdef HAVE_ZMQ_NEW_VER
@@ -478,8 +486,8 @@ static int init_client_zmq_connection(struct ssh_configs *ssh_configs)
 		goto failed;
 	}
 	snprintf(str, SSH_BUFSIZE, "ipc:///%s/%s.ipc",
-		      ssh_configs->ipc_dir ? : DEFAULT_IPC_PATH,
-		      ssh_configs->server_hosts[ssh_configs->cur_host]);
+		      server_host->ipc_dir ? : DEFAULT_IPC_PATH,
+		      server_host->host_name);
 	ret = zmq_connect(ssh_configs->requester, str);
 	if (ret) {
 		FERROR("ssh plugin: zmq client failed to connect, %s",
@@ -498,6 +506,7 @@ static int ssh_setup_socket(struct ssh_configs *ssh_configs)
 	int sock;
 	unsigned long hostaddr;
 	struct sockaddr_in sin;
+	struct ssh_server_host *server_host = ssh_configs->active_host;
 
 	rc = libssh2_init(0);
 	if (rc) {
@@ -513,7 +522,7 @@ static int ssh_setup_socket(struct ssh_configs *ssh_configs)
 		goto failed1;
 	}
 
-	hostaddr = inet_addr(ssh_configs->server_hosts[ssh_configs->cur_host]);
+	hostaddr = inet_addr(server_host->host_name);
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(22);
 	sin.sin_addr.s_addr = hostaddr;
@@ -675,6 +684,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
 	int result_len = SSH_RESULTS_BUFSIZE;
 	char str[SSH_BUFSIZE];
+	struct ssh_server_host *server_host = ssh_configs->active_host;
 
 	receive_buf = calloc(receive_buf_len, 1);
 	if (!receive_buf)
@@ -706,8 +716,8 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 		goto term_zmq;
 	}
 	snprintf(str, SSH_BUFSIZE, "ipc:///%s/%s.ipc",
-		      ssh_configs->ipc_dir ? : DEFAULT_IPC_PATH,
-		      ssh_configs->server_hosts[ssh_configs->cur_host]);
+		      server_host->ipc_dir ? : DEFAULT_IPC_PATH,
+		      server_host->host_name);
 	rc = zmq_bind(responder, str);
 	if (rc) {
 		FERROR("ssh plugin: failed to bind %s, %s", str,
@@ -727,7 +737,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 	 /* pre-run to ignore login messages */
 	rc = execute_remote_processes(session, channel, sock, receive_buf,
                                       receive_buf_len, &result, &result_len,
-				      ssh_configs->terminator);
+				      server_host->terminator);
 
 	/* keepalive message sent every 10s */
 	libssh2_keepalive_config(session, 0, 10);
@@ -748,7 +758,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 		rc = execute_remote_processes(session, channel, sock,
 					      receive_buf, receive_buf_len,
 					      &result, &result_len,
-					      ssh_configs->terminator);
+					      server_host->terminator);
 		if (rc < 0) {
 			FERROR("ssh plugin: failed to execute remote command, rc %d, %s",
 				rc, receive_buf);
@@ -805,12 +815,13 @@ static void *ssh_connection_thread(void *arg)
 {
 	struct ssh_configs *ssh_configs = (struct ssh_configs *)
 					    arg;
+	struct ssh_server_host *server_host = ssh_configs->active_host;
 	int sock;
 	LIBSSH2_SESSION * session = NULL;
 	LIBSSH2_CHANNEL *channel = NULL;
 	int conn_interval = MIN_CONNECTION_INTERVAL;
 	int rc;
-	int last_succeed_host = 0;
+	struct ssh_server_host *first_host = server_host;
 
 	while (1) {
 		sock = ssh_setup_socket(ssh_configs);
@@ -832,7 +843,6 @@ static void *ssh_connection_thread(void *arg)
 
 		/* reset conn interval once connection succeed */
 		conn_interval = MIN_CONNECTION_INTERVAL;
-		last_succeed_host = ssh_configs->cur_host;
 
 		rc = ssh_handle_request(ssh_configs, sock, session, channel);
 		if (rc) {
@@ -841,20 +851,26 @@ static void *ssh_connection_thread(void *arg)
 			ssh_cleanup_socket(sock);
 		}
 restart:
-		FERROR("ssh plugin: restart ssh connection background thread, sleep %d seconds",
-		       conn_interval);
 
 		/* Try next failover node */
-		ssh_configs->cur_host++;
-		ssh_configs->cur_host %= ssh_configs->num_hosts;
+		if (server_host->host_linkage.next != &ssh_configs->hosts_link_head)
+			server_host = list_entry(server_host->host_linkage.next,
+						 struct ssh_server_host, host_linkage);
+		else
+			server_host = first_host;
 
+		FERROR("ssh plugin: restart ssh connection background thread, "
+			"sleep %d seconds, try host: %s", conn_interval,
+			server_host->host_name);
+
+		ssh_configs->active_host = server_host;
 		/* let's relax a bit and drink coffee */
 		sleep(conn_interval);
 		/* connection only enlarged when we tried all failver nodes */
-		if (ssh_configs->cur_host == last_succeed_host &&
+		if (ssh_configs->active_host == first_host &&
 		    conn_interval <= MAX_CONNECTION_INTERVAL / 2)
 			conn_interval *= 2;
-		else if (ssh_configs->cur_host == last_succeed_host)
+		else if (ssh_configs->active_host == first_host)
 			conn_interval = MAX_CONNECTION_INTERVAL;
 
 		pthread_mutex_lock(&ssh_configs->ssh_lock);
@@ -868,37 +884,63 @@ restart:
 	return NULL;
 }
 
+static int ssh_check_host_conf(struct ssh_server_host *server_host)
+{
+
+	if (!server_host->host_name) {
+		FERROR("ssh plugin: ServerHost: HostName is missing");
+		return -EINVAL;
+	}
+
+	if (!server_host->user_name) {
+		FERROR("ssh plugin: ServerHost: UserName is missing for host: %s",
+			server_host->host_name);
+		return -EINVAL;
+	}
+	if (!server_host->terminator) {
+		FERROR("ssh plugin: ServerHost: SshTerminator is missing for host: %s",
+			server_host->host_name);
+		return -EINVAL;
+	}
+	if (!server_host->public_keyfile &&
+	    server_host->private_keyfile) {
+		FERROR("ssh plugin: ServerHost: PublicKeyfile missed but PrivateKeyfile "
+			"set for host: %s", server_host->host_name);
+		return -EINVAL;
+	}
+	if (server_host->public_keyfile &&
+	    !server_host->private_keyfile) {
+		FERROR("ssh plugin: ServerHost: PrivateKeyfile set but PublicKeyfile "
+			"missed for host: %s", server_host->host_name);
+		return -EINVAL;
+	}
+	if (!server_host->public_keyfile && !server_host->private_keyfile
+	    && !server_host->user_password) {
+		FERROR("ssh plugin: ServerHost: Neither UserPassword nor PublicKeyfile/PrivateKeyfile"
+			"set for host: %s", server_host->host_name);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 {
 	int ret;
 	pthread_t tid;
+	struct ssh_server_host *server_host;
 
 	pthread_mutex_init(&ssh_configs->ssh_lock, NULL);
 	pthread_cond_init(&ssh_configs->cond_t, NULL);
-	if (!ssh_configs->server_hosts || !ssh_configs->user_name
-	    || !ssh_configs->num_hosts) {
-		FERROR("ssh plugin: At least give one host and user");
-		return -EINVAL;
+
+	/* sanity check here */
+	list_for_each_entry(server_host, &ssh_configs->hosts_link_head,
+			    host_linkage) {
+		ret = ssh_check_host_conf(server_host);
+		if (ret)
+			return -EINVAL;
 	}
-	if (!ssh_configs->terminator) {
-		FERROR("ssh plugin: Please specify ssh terminal terminator");
-		return -EINVAL;
-	}
-	if (!ssh_configs->public_keyfile &&
-	    ssh_configs->private_keyfile) {
-		FERROR("ssh plugin: keyfiles need to be given in pair, or both missing");
-		return -EINVAL;
-	}
-	if (ssh_configs->public_keyfile &&
-	    !ssh_configs->private_keyfile) {
-		FERROR("ssh plugin: keyfiles need to be set in pair, or both missing");
-		return -EINVAL;
-	}
-	if (!ssh_configs->public_keyfile && !ssh_configs->private_keyfile
-	    && !ssh_configs->user_password) {
-		FERROR("ssh plugin: both password and keyfiles are missing");
-		return -EINVAL;
-	}
+
 	/* create thread that run in the background */
 	ret = pthread_create(&tid, NULL, ssh_connection_thread,
 			     (void *)ssh_configs);
@@ -1032,12 +1074,14 @@ static int check_server_host(const char *host)
 
 static int ssh_config_init(struct filedata_configs *lc)
 {
-	void *result;
+	struct ssh_configs *ssh_configs;
 
-	result = calloc(1, sizeof(struct ssh_configs));
-	if (!result)
+	ssh_configs = calloc(1, sizeof(struct ssh_configs));
+	if (!ssh_configs)
 		return -ENOMEM;
-	lc->fc_definition.fd_private_definition.fd_private_data = result;
+
+	INIT_LIST_HEAD(&ssh_configs->hosts_link_head);
+	lc->fc_definition.fd_private_definition.fd_private_data = (void *)ssh_configs;
 	return 0;
 }
 
@@ -1051,8 +1095,10 @@ static int host2ip(const char *host, char **ip)
 	if (!IP)
 		return -ENOMEM;
 	he = gethostbyname(host);
-	if (!he)
+	if (!he) {
+		free(IP);
 		return -h_errno;
+	}
 	memcpy(&ip_addr, he->h_addr_list[0], 4);
 	inet_ntop(AF_INET, &ip_addr,
 		  IP, MAX_IP_ADDRESS_LENGTH);
@@ -1060,138 +1106,152 @@ static int host2ip(const char *host, char **ip)
 	return 0;
 }
 
-static int parse_server_hosts(struct ssh_configs *ssh_configs,
-			      char *value)
+static int parse_server_host(struct ssh_server_host *server_host,
+			     char *value)
 {
-	char *p = value;
-	char *key_point;
-	int i = 0;
 	int ret;
-	int j;
-	char *ip;
 
-	/*
- 	 * this function might be called several times,
- 	 * cleanup it firstly.
- 	 */
-	for (i = 0; i <  ssh_configs->num_hosts; i++) {
-		free(ssh_configs->server_hosts[i]);
-		ssh_configs->server_hosts[i] = NULL;
+	ret = check_server_host(value);
+	if (ret) {
+		FERROR("ssh plugin: ignore invalid host: %s", value);
+		return ret;
 	}
-	ssh_configs->num_hosts = 0;
-	ssh_configs->cur_host = 0;
-	i = 0;
 
-	while (p) {
-		if (i >= MAX_FAILOVER_HOST_NUM) {
-			FERROR("ssh plugin: exceed max failover host num: %d",
-				MAX_FAILOVER_HOST_NUM);
+	ret = host2ip(value, &server_host->host_name);
+	if (ret)
+		FERROR("ssh plugin: failed to parse host: %s to ip", value);
+
+	return ret;
+}
+
+static void ssh_config_free_serverhost(struct ssh_server_host *server_host)
+{
+	if (server_host) {
+		free(server_host->host_name);
+		free(server_host->user_name);
+		free(server_host->public_keyfile);
+		free(server_host->private_keyfile);
+		free(server_host->known_hosts);
+		free(server_host->user_password);
+		free(server_host->sshkey_passphrase);
+		free(server_host->ipc_dir);
+		free(server_host->terminator);
+		free(server_host);
+	}
+}
+
+static int ssh_config_item_serverhost(oconfig_item_t *ci,
+				      struct filedata_configs *conf)
+{
+	int i;
+	char *value;
+	int ret = 0;
+	DIR *dir;
+
+	struct ssh_configs *ssh_configs = (struct ssh_configs *)
+					filedata_get_private_data(conf);
+	struct ssh_server_host *server_host = calloc(1,
+				sizeof(struct ssh_server_host));
+	if (!server_host) {
+		FERROR("ssh plugin: failed to allocate memory for server host");
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+
+		value = NULL;
+		ret = filedata_config_get_string(child, &value);
+		if (ret) {
+			FERROR("ssh plugin: failed to get value for: %s",
+			       value);
 			break;
 		}
-
-		while ((key_point = strsep(&p, " ")) != NULL) {
-			if (*key_point == '\0')
-				continue;
-			else
+		if (strcasecmp("HostName", child->key) == 0) {
+			free(server_host->host_name);
+			ret = parse_server_host(server_host, value);
+			free(value);
+			if (ret)
 				break;
-		}
-
-		ret = check_server_host(key_point);
-		if (ret) {
-			FERROR("ssh plugin: ignore invalid host: %s", key_point);
-			continue;
-		}
-
-		ret = host2ip(key_point, &ip);
-		if (ret) {
-			FERROR("ssh plugin: failed to parse host: %s to ip", key_point);
-			continue;
-		}
-
-		/* check duplicated hosts */
-		for (j = 0; j < ssh_configs->num_hosts; j++) {
-			if (!strcmp(ssh_configs->server_hosts[j], ip)) {
-				FERROR("ssh plugin: ignore duplicated failover host: %s, ip: %s",
-					key_point, ip);
-				free(ip);
-				continue;
+		} else if (strcasecmp("UserName", child->key) == 0) {
+			free(server_host->user_name);
+			server_host->user_name = value;
+		} else if (strcasecmp("KnownhostsFile", child->key) == 0) {
+			free(server_host->known_hosts);
+			server_host->known_hosts = value;
+			ret = check_config_path(value);
+			if (ret)
+				break;
+		} else if (strcasecmp("PublicKeyfile", child->key) == 0) {
+			free(server_host->public_keyfile);
+			ret = check_config_path(value);
+			server_host->public_keyfile = value;
+			if (ret)
+				break;
+		} else if (strcasecmp("PrivateKeyfile", child->key) == 0) {
+			free(server_host->private_keyfile);
+			server_host->private_keyfile = value;
+			ret = check_config_path(value);
+			if (ret)
+				break;
+		} else if (strcasecmp("UserPassword", child->key) == 0) {
+			free(server_host->user_password);
+			server_host->user_password = value;
+		} else if (strcasecmp("SshKeyPassphrase", child->key) == 0) {
+			free(server_host->sshkey_passphrase);
+			server_host->sshkey_passphrase = value;
+		} else if (strcasecmp("SshTerminator", child->key) == 0) {
+			free(server_host->terminator);
+			server_host->terminator = value;
+		} else if (strcasecmp("IpcDir", child->key) == 0) {
+			free(server_host->ipc_dir);
+			dir = opendir(value);
+			if (!dir) {
+				FERROR("ssh plugin: failed to opendir %s",
+					server_host->ipc_dir);
+				break;
+			} else {
+				closedir(dir);
 			}
+			server_host->ipc_dir = value;
+		} else if (strcasecmp("ZeromqPort", child->key) == 0) {
+			FERROR("ssh plugin: ZeromqPort is deprecated, ignore it");
+		} else {
+			free(value);
+			FERROR("ssh plugin: Common, The \"%s\" key is not allowed"
+					"and will be ignored.", child->key);
 		}
-		ssh_configs->server_hosts[i++] = ip;
-		ssh_configs->num_hosts = i;
 	}
-	if (i)
-		return 0;
-	else
-		return -EINVAL;
+
+	if (ret == 0) {
+		list_add_tail(&server_host->host_linkage,
+			      &ssh_configs->hosts_link_head);
+		FERROR("add host to tail : %s", server_host->host_name);
+		if (!ssh_configs->active_host)
+			ssh_configs->active_host = server_host;
+	} else {
+		ssh_config_free_serverhost(server_host);
+	}
+
+	return ret;
 }
 
 static int ssh_config_private(oconfig_item_t *ci,
 			      struct filedata_configs *conf)
 {
 	int ret = 0;
-	char *value = NULL;
-	DIR *dir;
-	struct ssh_configs *ssh_configs = (struct ssh_configs *)
-					filedata_get_private_data(conf);
 
-	ret = filedata_config_get_string(ci, &value);
-	if (ret) {
-		FERROR("ssh plugin: failed to get string");
-		return ret;
-	}
-	if (strcasecmp("ServerHost", ci->key) == 0) {
-		ret = parse_server_hosts(ssh_configs, value);
-		if (ret)
-			FERROR("ssh plugin: invalid server hosts");
-	} else if (strcasecmp("UserName", ci->key) == 0) {
-		free(ssh_configs->user_name);
-		ssh_configs->user_name = value;
-	} else if (strcasecmp("KnownhostsFile", ci->key) == 0) {
-		free(ssh_configs->known_hosts);
-		ssh_configs->known_hosts = value;
-		ret = check_config_path(value);
-	} else if (strcasecmp("PublicKeyfile", ci->key) == 0) {
-		free(ssh_configs->public_keyfile);
-		ret = check_config_path(value);
-		ssh_configs->public_keyfile = value;
-	} else if (strcasecmp("PrivateKeyfile", ci->key) == 0) {
-		free(ssh_configs->private_keyfile);
-		ssh_configs->private_keyfile = value;
-		ret = check_config_path(value);
-	} else if (strcasecmp("UserPassword", ci->key) == 0) {
-		free(ssh_configs->user_password);
-		ssh_configs->user_password = value;
-	} else if (strcasecmp("SshKeyPassphrase", ci->key) == 0) {
-		free(ssh_configs->sshkey_passphrase);
-		ssh_configs->sshkey_passphrase = value;
-	} else if (strcasecmp("SshTerminator", ci->key) == 0) {
-		free(ssh_configs->terminator);
-		ssh_configs->terminator = value;
-	} else if (strcasecmp("IpcDir", ci->key) == 0) {
-		free(ssh_configs->ipc_dir);
-		dir = opendir(value);
-		if (!dir) {
-			FERROR("ssh plugin: failed to opendir %s",
-				ssh_configs->ipc_dir);
-		} else {
-			closedir(dir);
-		}
-		ssh_configs->ipc_dir = value;
-	} else if (strcasecmp("ZeromqPort", ci->key) == 0) {
-		FERROR("ssh plugin: ZeromqPort is deprecated, ignore it");
-	} else {
-		free(value);
+	if (strcasecmp("ServerHost", ci->key) == 0)
+		ret = ssh_config_item_serverhost(ci, conf);
+	else
 		FERROR("ssh plugin: Common, The \"%s\" key is not allowed"
-				"and will be ignored.", ci->key);
-	}
+			"and will be ignored.", ci->key);
 	return ret;
-
 }
 
 static void ssh_config_fini(struct filedata_configs *lc)
 {
-	int i;
+	struct ssh_server_host *server_host, *tmp;
 	struct ssh_configs *ssh_configs = (struct ssh_configs *)
 				filedata_get_private_data(lc);
 	if (!ssh_configs)
@@ -1200,16 +1260,11 @@ static void ssh_config_fini(struct filedata_configs *lc)
 	if (ssh_configs->bg_tid && ssh_configs->bg_running)
 		pthread_kill(ssh_configs->bg_tid, SIGKILL);
 
-	for (i = 0; i <  ssh_configs->num_hosts; i++)
-		free(ssh_configs->server_hosts[i]);
-	free(ssh_configs->user_name);
-	free(ssh_configs->public_keyfile);
-	free(ssh_configs->private_keyfile);
-	free(ssh_configs->known_hosts);
-	free(ssh_configs->user_password);
-	free(ssh_configs->sshkey_passphrase);
-	free(ssh_configs->ipc_dir);
-	free(ssh_configs->terminator);
+	list_for_each_entry_safe(server_host, tmp,
+			    &ssh_configs->hosts_link_head, host_linkage) {
+		list_del_init(&server_host->host_linkage);
+		ssh_config_free_serverhost(server_host);
+	}
 }
 
 static int ssh_config_internal(oconfig_item_t *ci)
@@ -1247,7 +1302,7 @@ static int ssh_config_internal(oconfig_item_t *ci)
 
 	memset (callback_name, 0, sizeof (callback_name));
 	ssnprintf (callback_name, sizeof (callback_name),
-		   "ssh/%s", ssh_configs->server_hosts[ssh_configs->cur_host]);
+		   "ssh/%s", ssh_configs->active_host->host_name);
 
 	rc = plugin_register_complex_read (/* group = */ NULL,
 				/* name      = */ callback_name,
@@ -1267,16 +1322,14 @@ static int ssh_plugin_init_once(void)
 	int rc;
 	int total = 0;
 	int failed = 0;
-	int i;
 
 	/* should be safe */
 	list_for_each_entry(ssh_entry, &ssh_link_head, ssh_linkage)
 	{
 		rc = ssh_plugin_init(ssh_entry->ssh_configs);
 		if (rc) {
-			i = ssh_entry->ssh_configs->cur_host;
 			FERROR("ssh plugin: failed to init ssh plugin for host: %s",
-				ssh_entry->ssh_configs->server_hosts[i]);
+				ssh_entry->ssh_configs->active_host->host_name);
 			failed++;
 			continue;
 		}
