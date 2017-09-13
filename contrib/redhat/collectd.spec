@@ -1976,7 +1976,6 @@ The zabbix plugin send key and value to zabbix server
 
 %configure CFLAGS="%{optflags} -DLT_LAZY_OR_NOW=\"RTLD_LAZY|RTLD_GLOBAL\"" \
 	%{?_python_config} \
-	--enable-debug \
 	--disable-static \
 	--enable-all-plugins=yes \
 	--enable-match_empty_counter \
