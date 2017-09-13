@@ -40,7 +40,11 @@ typedef struct mh_hash_match_s mh_hash_match_t;
 
 struct mh_match_s;
 typedef struct mh_match_s mh_match_t;
+#define EXTRA_MATCH_HOST	0x0001
+#define EXTRA_MATCH_PLUG	0x0002
+#define EXTRA_MATCH_TYPE	0x0004
 struct mh_match_s {
+  uint32_t flags;
   mh_hash_match_t *matches;
   size_t matches_num;
 };
@@ -87,6 +91,28 @@ static int mh_config_match(const oconfig_item_t *ci, /* {{{ */
   return 0;
 } /* }}} int mh_config_match */
 
+static int mh_config_match_fields(const oconfig_item_t *ci,
+                                  mh_match_t *m)
+{
+  if (ci->values_num == 1 &&
+      ci->values[0].type == OCONFIG_TYPE_STRING &&
+      strcmp(ci->values[0].value.string, "plugin") == 0)
+    m->flags |= EXTRA_MATCH_PLUG;
+  else if(ci->values_num == 2 &&
+      ci->values[0].type == OCONFIG_TYPE_STRING &&
+      strcmp(ci->values[0].value.string, "plugin") == 0 &&
+      ci->values[1].type == OCONFIG_TYPE_STRING &&
+      strcmp(ci->values[1].value.string, "type") == 0)
+    m->flags |= (EXTRA_MATCH_PLUG | EXTRA_MATCH_TYPE);
+  else {
+    ERROR ("hashed match: The '%s' option format is "
+           "ExtraMatchFields <plugin> [type]!", ci->key);
+    return (-1);
+  }
+
+  return 0;
+}
+
 static int mh_create(const oconfig_item_t *ci, void **user_data) /* {{{ */
 {
   mh_match_t *m;
@@ -97,11 +123,14 @@ static int mh_create(const oconfig_item_t *ci, void **user_data) /* {{{ */
     return -ENOMEM;
   }
 
+  m->flags = EXTRA_MATCH_HOST;
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *child = ci->children + i;
 
     if (strcasecmp("Match", child->key) == 0)
       mh_config_match(child, m);
+    else if (strcasecmp("ExtraMatchFields", child->key) == 0)
+      mh_config_match_fields(child, m);
     else
       ERROR("hashed match: No such config option: %s", child->key);
   }
@@ -149,12 +178,44 @@ static int mh_match(const data_set_t __attribute__((unused)) * ds, /* {{{ */
     /* 2184401929 is some appropriately sized prime number. */
     hash_val = (hash_val * UINT32_C(2184401929)) + ((uint32_t)*host_ptr);
   }
-  DEBUG("hashed match: host = %s; hash_val = %" PRIu32 ";", vl->host, hash_val);
+
+  if (m->flags & EXTRA_MATCH_PLUG) {
+    for (const char *plugin_ptr = vl->plugin; *plugin_ptr != 0; plugin_ptr++)
+    {
+      /* 2184401929 is some appropriately sized prime number. */
+      hash_val = (hash_val * UINT32_C (2184401929)) + ((uint32_t) *plugin_ptr);
+    }
+    for (const char *pluginst_ptr = vl->plugin_instance; *pluginst_ptr != 0; pluginst_ptr++)
+    {
+      /* 2184401929 is some appropriately sized prime number. */
+      hash_val = (hash_val * UINT32_C (2184401929)) + ((uint32_t) *pluginst_ptr);
+    }
+  }
+
+  if (m->flags & EXTRA_MATCH_TYPE) {
+    for (const char *type_ptr = vl->type; *type_ptr != 0; type_ptr++)
+    {
+      /* 2184401929 is some appropriately sized prime number. */
+      hash_val = (hash_val * UINT32_C (2184401929)) + ((uint32_t) *type_ptr);
+    }
+    for (const char *typeinst_ptr = vl->type_instance; *typeinst_ptr != 0; typeinst_ptr++)
+    {
+      /* 2184401929 is some appropriately sized prime number. */
+      hash_val = (hash_val * UINT32_C (2184401929)) + ((uint32_t) *typeinst_ptr);
+    }
+  }
+
+  DEBUG ("hashed match: host = %s plugin = %s plugin_instance = %s "
+         "type = %s type_instance = %s; flags = %x; hash_val = %"PRIu32";",
+         vl->host, vl->plugin, vl->plugin_instance, vl->type, vl->type_instance,
+         m->flags, hash_val);
 
   for (size_t i = 0; i < m->matches_num; i++)
-    if ((hash_val % m->matches[i].total) == m->matches[i].match)
+    if ((hash_val % m->matches[i].total) == m->matches[i].match) {
+      DEBUG("hashed match: hash_val = %"PRIu32"; match = %"PRIu32";",
+            hash_val, m->matches[i].match);
       return FC_MATCH_MATCHES;
-
+    }
   return FC_MATCH_NO_MATCH;
 } /* }}} int mh_match */
 
