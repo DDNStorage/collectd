@@ -1937,7 +1937,7 @@ int main(int argc, char **argv)
 		if (strcasecmp(conf->children[i].key, "Plugin") == 0 &&
 		    strcasecmp(conf->children[i].values[0].value.string,
 			       "lustre") == 0) {
-		    	configs = lustre_config(&conf->children[i]);
+			configs = lustre_config(&conf->children[i], NULL);
 		    	if (configs == NULL) {
 				LERROR("failed to get Lustre configure");
 				oconfig_free(conf);

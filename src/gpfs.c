@@ -155,7 +155,7 @@ static int gpfs_read(void)
 
 static int gpfs_config_internal(oconfig_item_t *ci)
 {
-	gpfs_config_g = lustre_config(ci);
+	gpfs_config_g = lustre_config(ci, NULL);
 	if (gpfs_config_g == NULL) {
 		ERROR("failed to configure gpfs");
 		return 0;

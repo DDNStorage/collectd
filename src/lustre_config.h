@@ -41,6 +41,7 @@ typedef enum {
 } value_type_t;
 
 struct lustre_item_type;
+struct lustre_configs;
 typedef int (*lustre_read_fn) (struct lustre_item_type *type);
 
 #define LUSTRE_FIELD_FLAG_INDEX				0x00000001
@@ -238,6 +239,20 @@ struct lustre_entry {
 
 typedef int (*lustre_read_file_fn)
 	(const char *path, char **buf, ssize_t *data_size);
+typedef int (*lustre_private_init_fn)
+	(struct lustre_configs *);
+typedef void (*lustre_private_fini_fn)
+	(struct lustre_configs *);
+typedef int (*lustre_private_config_fn)
+	(oconfig_item_t *ci, struct lustre_configs *conf);
+
+struct lustre_private_definition {
+	/* Private data used by specific plugins */
+	void			 *ld_private_data;
+	lustre_private_init_fn	ld_private_init;
+	lustre_private_fini_fn	ld_private_fini;
+	lustre_private_config_fn  ld_private_config;
+};
 
 struct lustre_definition {
 	_Bool			  ld_inited;
@@ -245,15 +260,20 @@ struct lustre_definition {
 	char			 *ld_filename;
 	unsigned long long	  ld_query_times;
 	lustre_read_file_fn	  ld_read_file;
+	struct lustre_private_definition ld_private_definition;
 };
 
 struct lustre_configs {
 	struct lustre_definition lc_definition;
 };
-struct lustre_configs *lustre_config(oconfig_item_t *ci);
+struct lustre_configs *lustre_config(oconfig_item_t *ci,
+				     struct lustre_private_definition *
+				     ld_private_definition);
+inline void *lustre_get_private_data(struct lustre_configs *conf);
 int lustre_config_save(struct lustre_configs *conf,
 		       const char *config_file);
 void lustre_config_free(struct lustre_configs *conf);
+int lustre_config_get_string(const oconfig_item_t *ci, char **ret_string);
 int lustre_compile_regex(regex_t *preg, const char *regex);
 void lustre_definition_fini(struct lustre_definition *definition);
 int lustre_item_match(struct lustre_field *fields,

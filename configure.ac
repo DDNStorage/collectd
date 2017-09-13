@@ -5771,6 +5771,104 @@ AC_SUBST([BUILD_WITH_LIBVARNISH_CFLAGS])
 AC_SUBST([BUILD_WITH_LIBVARNISH_LIBS])
 # }}}
 
+with_libssh2="no (pkg-config isn't available)"
+with_libssh2_cflags=""
+with_libssh2_ldflags=""
+with_libzmq="no (pkg-config isn't available)"
+with_libzmq_cflags=""
+with_libzmq_ldflags=""
+if test "x$PKG_CONFIG" != "x"
+then
+	$PKG_CONFIG --exists 'libssh2' 2>/dev/null
+	if test "$?" = "0"
+	then
+		with_libssh2="yes"
+	else
+		with_libssh2="no (pkg-config doesn't know libssh2)"
+	fi
+
+	$PKG_CONFIG --exists libzmq 2>/dev/null
+	if test "$?" = "0"
+	then
+		with_libzmq="yes"
+	else
+		with_libzmq="no (pkg-config doesn't know libvirt)"
+	fi
+fi
+if test "x$with_libssh2" = "xyes"
+then
+	with_libssh2_cflags="`$PKG_CONFIG --cflags libssh2`"
+	if test $? -ne 0
+	then
+		with_libssh2="no"
+	fi
+	with_libssh2_ldflags="`$PKG_CONFIG --libs libssh2`"
+	if test $? -ne 0
+	then
+		with_libssh2="no"
+	fi
+fi
+if test "x$with_libzmq" = "xyes"
+then
+	with_libzmq_cflags="`$PKG_CONFIG --cflags libzmq`"
+	if test $? -ne 0
+	then
+		with_libzmq="no"
+	fi
+	with_libzmq_ldflags="`$PKG_CONFIG --libs libzmq`"
+	if test $? -ne 0
+	then
+		with_libzmq="no"
+	fi
+fi
+if test "x$with_libzmq" = "xyes"
+then
+	SAVE_CPPFLAGS="$CPPFLAGS"
+	CPPFLAGS="$CPPFLAGS $with_libzmq_cflags"
+
+	AC_CHECK_HEADERS(zmq.h, [],
+		      [with_libzmq="no (zmq.h not found)"])
+
+	CPPFLAGS="$SAVE_CPPFLAGS"
+fi
+if test "x$with_libzmq" = "xyes"
+then
+	SAVE_CFLAGS="$CFLAGS"
+	SAVE_LDFLAGS="$LDFLAGS"
+
+	CFLAGS="$CFLAGS $with_libzmq_cflags"
+	LDFLAGS="$LDFLAGS $with_libzmq_ldflags"
+
+	AC_CHECK_LIB(zmq, zmq_msg_recv,
+		     [with_libzmq="yes"],
+		     [with_libzmq="no (symbol zmq_msg_recv not found)"])
+
+	if test "x$with_libzmq" = "xyes"; then
+                AC_DEFINE(HAVE_ZMQ_NEW_VER, 1,
+                          [Define if the function zmq_msg_recv exists])
+        fi
+	AC_CHECK_LIB(zmq, zmq_recv,
+		     [with_libzmq="yes"],
+		     [with_libzmq="no (symbol zmq_recv not found)"])
+
+	CFLAGS="$SAVE_CFLAGS"
+	LDFLAGS="$SAVE_LDFLAGS"
+fi
+
+if test "x$with_libssh2" = "xyes"; then
+	BUILD_WITH_LIBSSH_CFLAGS="$with_libssh2_cflags"
+	BUILD_WITH_LIBSSH_LIBS="$with_libssh2_ldflags"
+	AC_SUBST(BUILD_WITH_LIBSSH_CFLAGS)
+	AC_SUBST(BUILD_WITH_LIBSSH_LIBS)
+fi
+
+if test "x$with_libzmq" = "xyes"; then
+	BUILD_WITH_LIBZMQ_CFLAGS="$with_libzmq_cflags"
+	BUILD_WITH_LIBZMQ_LIBS="$with_libzmq_ldflags"
+	AC_SUBST(BUILD_WITH_LIBZMQ_CFLAGS)
+	AC_SUBST(BUILD_WITH_LIBZMQ_LIBS)
+fi
+
 # pkg-config --exists 'libxml-2.0'; pkg-config --exists libvirt {{{
 $PKG_CONFIG --exists 'libxml-2.0' 2>/dev/null
 if test $? -eq 0; then
@@ -6169,6 +6267,7 @@ plugin_protocols="no"
 plugin_python="no"
 plugin_serial="no"
 plugin_smart="no"
+plugin_ssh="no"
 plugin_stress="no"
 plugin_swap="no"
 plugin_tape="no"
@@ -6244,6 +6343,10 @@ if test "x$ac_system" = "xLinux"; then
   if test "x$with_libxml2" = "xyes"; then
     plugin_gpfs="yes"
     plugin_lustre="yes"
+  fi
+
+  if test "x$with_libxml2" = "xyes" && test "x$with_libssh2" = "xyes" && test "x$with_libzmq" = "xyes"; then
+    plugin_ssh="yes"
   fi
 fi
 
@@ -6634,6 +6737,7 @@ AC_PLUGIN([sigrok],              [$with_libsigrok],         [sigrok acquisition 
 AC_PLUGIN([smart],               [$plugin_smart],           [SMART statistics])
 AC_PLUGIN([snmp],                [$with_libnetsnmp],        [SNMP querying plugin])
 AC_PLUGIN([snmp_agent],          [$with_libnetsnmpagent],   [SNMP agent plugin])
+AC_PLUGIN([ssh],                 [$plugin_ssh],             [ssh plugin])
 AC_PLUGIN([statsd],              [yes],                     [StatsD plugin])
 AC_PLUGIN([swap],                [$plugin_swap],            [Swap usage statistics])
 AC_PLUGIN([syslog],              [$have_syslog],            [Syslog logging plugin])
@@ -7056,6 +7160,7 @@ AC_MSG_RESULT([    sigrok  . . . . . . . $enable_sigrok])
 AC_MSG_RESULT([    smart . . . . . . . . $enable_smart])
 AC_MSG_RESULT([    snmp  . . . . . . . . $enable_snmp])
 AC_MSG_RESULT([    snmp_agent  . . . . . $enable_snmp_agent])
+AC_MSG_RESULT([    ssh . . . . . . . . . $enable_ssh])
 AC_MSG_RESULT([    statsd  . . . . . . . $enable_statsd])
 AC_MSG_RESULT([    stress  . . . . . . . $enable_stress])
 AC_MSG_RESULT([    swap  . . . . . . . . $enable_swap])
