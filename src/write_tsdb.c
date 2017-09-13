@@ -409,7 +409,7 @@ static int wt_format_name(char *ret, int ret_len, const value_list_t *vl,
       sfree(temp);
       return status;
     } else {
-      ssnprintf(ret, ret_len, "%s", temp);
+      snprintf(ret, ret_len, "%s", temp);
       sfree(temp);
       return 0;
     }
