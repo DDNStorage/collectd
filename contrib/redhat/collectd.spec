@@ -177,6 +177,7 @@
 # DDN plugins
 %define with_ganglia 0%{!?_without_ganglia:1}
 %define with_gpfs 0%{!?_without_gpfs:1}
+%define with_ime 0%{!?_without_ime:1}
 %define with_lustre 0%{!?_without_lustre:1}
 %define with_ssh 0%{!?_without_ssh:1}
 %define with_stress 0%{!?_without_stress:1}
@@ -1119,6 +1120,15 @@ Group:		System Environment/Daemons
 Requires:	%{name}%{?_isa} = %{version}-%{release}
 %description gpfs
 GPFS plugin for collectd.
+%endif
+
+%if %{with_ime}
+%package ime
+Summary:	IME plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description ime
+IME plugin for collectd.
 %endif
 
 %if %{with_lustre}
@@ -2134,6 +2144,12 @@ The zabbix plugin send key and value to zabbix server
 %define _with_gpfs --disable-gpfs
 %endif
 
+%if %{with_ime}
+%define _with_ime --enable-ime
+%else
+%define _with_ime --disable-ime
+%endif
+
 %if %{with_lustre}
 %define _with_lustre --enable-lustre
 %else
@@ -2342,6 +2358,7 @@ The zabbix plugin send key and value to zabbix server
 	%{?_with_zookeeper} \
 	%{?_with_ganglia} \
 	%{?_with_gpfs} \
+	%{?_with_ime} \
 	%{?_with_lustre} \
 	%{?_with_ssh} \
 	%{?_with_stress} \
@@ -3111,6 +3128,11 @@ fi
 %if %{with_gpfs}
 %files gpfs
 %{_libdir}/%{name}/gpfs.so
+%endif
+
+%if %{with_ime}
+%files ime
+%{_libdir}/%{name}/ime.so
 %endif
 
 %if %{with_lustre}
