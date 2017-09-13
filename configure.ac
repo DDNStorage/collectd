@@ -7052,7 +7052,7 @@ AC_PLUGIN([fhcount],             [$plugin_fhcount],           [File handles stat
 AC_PLUGIN([filecount],           [yes],                       [Count files in directories])
 AC_PLUGIN([fscache],             [$plugin_fscache],           [fscache statistics])
 AC_PLUGIN([gmond],               [$with_libganglia],          [Ganglia plugin])
-AC_PLUGIN([ganglia],             [$with_libganglia],        [Ganglia plugin])
+AC_PLUGIN([ganglia],             [$with_libganglia],        [Ganglia plugin to send data to gmond])
 AC_PLUGIN([gps],                 [$plugin_gps],               [GPS plugin])
 AC_PLUGIN([gpu_nvidia],          [$with_cuda],                [NVIDIA GPU plugin])
 AC_PLUGIN([grpc],                [$plugin_grpc],              [gRPC plugin])
