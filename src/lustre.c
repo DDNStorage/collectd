@@ -416,9 +416,9 @@ static void lustre_item_data_free(struct lustre_item_data *data)
 	free(data);
 }
 
-static int lustre_parse(struct lustre_item_type *type,
-		        const char *content,
-		        struct list_head *path_head)
+static int _lustre_parse(struct lustre_item_type *type,
+			 const char *content,
+			 struct list_head *path_head)
 {
 	const char *previous = content;
 	regmatch_t *fields;
@@ -436,6 +436,7 @@ static int lustre_parse(struct lustre_item_type *type,
 	data = lustre_item_data_alloc(type);
 	if (data == NULL) {
 		ERROR("parse: not enough memory");
+		status = -1;
 		goto out;
 	}
 
@@ -444,7 +445,7 @@ static int lustre_parse(struct lustre_item_type *type,
 		int nomatch = regexec(&type->lit_regex, previous,
 				      type->lit_field_number + 1, fields, 0);
 		if (nomatch) {
-			return 0;
+			break;
 		}
 		lustre_item_data_clean(data);
 
@@ -453,6 +454,7 @@ static int lustre_parse(struct lustre_item_type *type,
 			int finish;
 
 			if (fields[i].rm_so == -1) {
+				ERROR("unused field %d", i);
 				break;
 			}
 
@@ -496,6 +498,66 @@ static int lustre_parse(struct lustre_item_type *type,
 out:
 	free(fields);
 	return status;
+}
+
+static int lustre_parse_context(struct lustre_item_type *type,
+				const char *content,
+				struct list_head *path_head)
+{
+	const char *previous = content;
+	regmatch_t *fields;
+	char *buf;
+	int status = 0;
+
+	fields = calloc(type->lit_context_regex.re_nsub + 1, sizeof(regmatch_t));
+	if (fields == NULL) {
+		ERROR("parse: not enough memory");
+		return -1;
+	}
+
+	buf = malloc(strlen(content) + 1);
+	if (buf == NULL) {
+		ERROR("parse: not enough memory");
+		status = -1;
+		goto out;
+	}
+
+	while (1) {
+		int start;
+		int finish;
+		int nomatch = regexec(&type->lit_context_regex, previous,
+				      type->lit_context_regex.re_nsub + 1, fields, 0);
+		if (nomatch) {
+			break;
+		}
+
+		start = fields[0].rm_so + (previous - content);
+		finish = fields[0].rm_eo + (previous - content);
+		strncpy(buf,
+			content + start, finish - start);
+
+		status = _lustre_parse(type, buf, path_head);
+		if (status) {
+			break;
+		}
+		previous += fields[0].rm_eo;
+	}
+
+	free(buf);
+out:
+	free(fields);
+	return status;
+}
+
+static int lustre_parse(struct lustre_item_type *type,
+			const char *content,
+			struct list_head *path_head)
+{
+	if (type->lit_flags & LUSTRE_ITEM_FLAG_CONTEXT) {
+		return lustre_parse_context(type, content, path_head);
+	} else {
+		return _lustre_parse(type, content, path_head);
+	}
 }
 
 #define START_FILE_SIZE (1048576)
@@ -907,6 +969,8 @@ void lustre_item_type_free(struct lustre_item_type *type)
 		free(type->lit_field_array);
 	if (type->lit_flags & LUSTRE_ITEM_FLAG_PATTERN)
 		regfree(&type->lit_regex);
+	if (type->lit_flags & LUSTRE_ITEM_FLAG_CONTEXT)
+		regfree(&type->lit_context_regex);
 	free(type);
 }
 
