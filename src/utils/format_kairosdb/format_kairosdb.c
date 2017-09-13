@@ -188,6 +188,16 @@ static int value_list_to_kairosdb(char *buffer, size_t buffer_size, /* {{{ */
   char temp[512];
   size_t offset = 0;
   int status;
+  const char *meta_tags = "tsdb_tags";
+  const char *meta_name = "tsdb_name";
+  char *meta_temp = NULL;
+  char *value;
+  int value_length;
+  char value_buffer[512];
+  char *key;
+  int key_length;
+  char key_buffer[512];
+  char *pointer;
 
   memset(buffer, 0, buffer_size);
 
@@ -219,7 +229,13 @@ static int value_list_to_kairosdb(char *buffer, size_t buffer_size, /* {{{ */
       BUFFER_ADD("%s.", metrics_prefix);
     }
 
+    status = meta_data_get_string(vl->meta, meta_name, &meta_temp);
+    if (status < 0) {
     BUFFER_ADD("%s", vl->plugin);
+    } else {
+      BUFFER_ADD(".%s", meta_temp);
+      sfree(meta_temp);
+    }
 
     status = values_to_kairosdb(temp, sizeof(temp), ds, vl, store_rates, i);
     if (status != 0)
@@ -244,13 +260,60 @@ static int value_list_to_kairosdb(char *buffer, size_t buffer_size, /* {{{ */
       BUFFER_ADD(" \"%s\"", http_attrs[j + 1]);
     }
 
-    if (strlen(vl->plugin_instance))
-      BUFFER_ADD_KEYVAL("plugin_instance", vl->plugin_instance);
-    BUFFER_ADD_KEYVAL("type", vl->type);
-    if (strlen(vl->type_instance))
-      BUFFER_ADD_KEYVAL("type_instance", vl->type_instance);
-    if (ds->ds_num != 1)
-      BUFFER_ADD_KEYVAL("ds", ds->ds[i].name);
+    status = meta_data_get_string(vl->meta, meta_tags, &meta_temp);
+    if (status < 0) {
+      BUFFER_ADD("\"host\": \"%s\"", vl->host);
+      if (strlen(vl->plugin_instance))
+        BUFFER_ADD_KEYVAL("plugin_instance", vl->plugin_instance);
+      BUFFER_ADD_KEYVAL("type", vl->type);
+      if (strlen(vl->type_instance))
+        BUFFER_ADD_KEYVAL("type_instance", vl->type_instance);
+      if (ds->ds_num != 1)
+        BUFFER_ADD_KEYVAL("ds", ds->ds[i].name);
+    } else {
+      pointer = meta_temp;
+      BUFFER_ADD("\"host\": \"%s\"", vl->host);
+      for(pointer = meta_temp; *pointer != '\0'; pointer++) {
+      	key = pointer;
+      	key_length = 0;
+      	while (*pointer != '\0' && *pointer != '=') {
+          key_length++;
+          pointer++;
+      	}
+      	if (pointer == '\0') {
+          ERROR("kairosdb: parsing tags get failure");
+          sfree(meta_temp);
+      	  return -1;
+        }
+      	pointer++;
+      	if (pointer == '\0') {
+          ERROR("kairosdb: parsing tags get failure");
+          sfree(meta_temp);
+      	  return -1;
+        }
+      	value = pointer;
+      	value_length = 0;
+      	while (*pointer != '\0' && *pointer != ' ') {
+          value_length++;
+          pointer++;
+      	}
+
+        if (value_length >= sizeof(value_buffer) ||
+            key_length >= sizeof(key_buffer)) {
+          ERROR("kairosdb: too long tags");
+          sfree(meta_temp);
+      	  return -1;
+        }
+        memset(value_buffer, 0, sizeof(value_buffer));
+        memset(key_buffer, 0, sizeof(key_buffer));
+        strncpy(value_buffer, value, value_length);
+        strncpy(key_buffer, key, key_length);
+        BUFFER_ADD_KEYVAL(key_buffer, value_buffer);
+        if (*pointer == '\0')
+          break;
+      }
+      sfree(meta_temp);
+    }
     BUFFER_ADD("}}");
   } /* for ds->ds_num */
 

@@ -40,6 +40,7 @@ static void lustre_instance_submit(const char *host,
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
+	int status;
 
 	if (strcmp(type, "derive") == 0) {
 		values[0].derive = value;
@@ -95,6 +96,7 @@ static void lustre_instance_submit(const char *host,
 	      (unsigned long long)vl.values[0].derive);
 
 	plugin_dispatch_values(&vl);
+out:
 	meta_data_destroy(vl.meta);
 	vl.meta = NULL;
 }
