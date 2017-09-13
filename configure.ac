@@ -6600,6 +6600,7 @@ plugin_ipvs="no"
 plugin_irq="no"
 plugin_load="no"
 plugin_log_logstash="no"
+plugin_lustre="no"
 plugin_mcelog="no"
 plugin_memory="no"
 plugin_multimeter="no"
@@ -6703,6 +6704,10 @@ if test "x$ac_system" = "xLinux"; then
 
   if test "x$with_libmicrohttpd" = "xyes" && test "x$with_libjansson" = "xyes"; then
     plugin_capabilities="yes"
+  fi
+
+  if test "x$with_libxml2" = "xyes"; then
+    plugin_lustre="yes"
   fi
 fi
 
@@ -7066,6 +7071,7 @@ AC_PLUGIN([logfile],             [yes],                       [File logging plug
 AC_PLUGIN([logparser],           [yes],                       [Log parsing plugin])
 AC_PLUGIN([lpar],                [$with_perfstat],            [AIX logical partitions statistics])
 AC_PLUGIN([lua],                 [$with_liblua],              [Lua plugin])
+AC_PLUGIN([lustre],              [$plugin_lustre],          [Lustre plugin])
 AC_PLUGIN([madwifi],             [$have_linux_wireless_h],    [Madwifi wireless statistics])
 AC_PLUGIN([match_empty_counter], [yes],                       [The empty counter match])
 AC_PLUGIN([match_hashed],        [yes],                       [The hashed match])
@@ -7510,6 +7516,7 @@ AC_MSG_RESULT([    logparser . . . . . . $enable_logparser])
 AC_MSG_RESULT([    log_logstash  . . . . $enable_log_logstash])
 AC_MSG_RESULT([    lpar  . . . . . . . . $enable_lpar])
 AC_MSG_RESULT([    lua . . . . . . . . . $enable_lua])
+AC_MSG_RESULT([    lustre . . . . . . .. $enable_lustre])
 AC_MSG_RESULT([    madwifi . . . . . . . $enable_madwifi])
 AC_MSG_RESULT([    match_empty_counter . $enable_match_empty_counter])
 AC_MSG_RESULT([    match_hashed  . . . . $enable_match_hashed])
