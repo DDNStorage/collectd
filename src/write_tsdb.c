@@ -370,9 +370,22 @@ static int wt_format_name(char *ret, int ret_len, const value_list_t *vl,
   int status;
   char *temp = NULL;
   const char *prefix = "";
+  const char *meta_name = "tsdb_name";
   const char *meta_prefix = "tsdb_prefix";
 
   if (vl->meta) {
+    status = meta_data_get_string(vl->meta, meta_name, &temp);
+    if (status == -ENOENT) {
+      /* defaults to empty string */
+    } else if (status < 0) {
+      sfree(temp);
+      return status;
+    } else {
+      ssnprintf(ret, ret_len, "%s", temp);
+      sfree(temp);
+      return 0;
+    }
+
     status = meta_data_get_string(vl->meta, meta_prefix, &temp);
     if (status == -ENOENT) {
       /* defaults to empty string */
