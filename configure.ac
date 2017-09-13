@@ -6709,6 +6709,7 @@ if test "x$ac_system" = "xLinux"; then
   fi
 
   if test "x$with_libxml2" = "xyes"; then
+    plugin_gpfs="yes"
     plugin_lustre="yes"
   fi
 fi
@@ -7053,6 +7054,7 @@ AC_PLUGIN([filecount],           [yes],                       [Count files in di
 AC_PLUGIN([fscache],             [$plugin_fscache],           [fscache statistics])
 AC_PLUGIN([gmond],               [$with_libganglia],          [Ganglia plugin])
 AC_PLUGIN([ganglia],             [$with_libganglia],        [Ganglia plugin to send data to gmond])
+AC_PLUGIN([gpfs],                [$plugin_gpfs],            [gpfs statistics])
 AC_PLUGIN([gps],                 [$plugin_gps],               [GPS plugin])
 AC_PLUGIN([gpu_nvidia],          [$with_cuda],                [NVIDIA GPU plugin])
 AC_PLUGIN([grpc],                [$plugin_grpc],              [gRPC plugin])
@@ -7500,6 +7502,7 @@ AC_MSG_RESULT([    filecount . . . . . . $enable_filecount])
 AC_MSG_RESULT([    fscache . . . . . . . $enable_fscache])
 AC_MSG_RESULT([    gmond . . . . . . . . $enable_gmond])
 AC_MSG_RESULT([    ganglia . . . . . . . $enable_ganglia])
+AC_MSG_RESULT([    gpfs . . . . . . . .  $enable_gpfs])
 AC_MSG_RESULT([    gps . . . . . . . . . $enable_gps])
 AC_MSG_RESULT([    gpu_nvidia  . . . . . $enable_gpu_nvidia])
 AC_MSG_RESULT([    grpc  . . . . . . . . $enable_grpc])

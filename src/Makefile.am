@@ -823,6 +823,19 @@ fscache_la_SOURCES = fscache.c
 fscache_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 endif
 
+if BUILD_PLUGIN_GPFS
+pkglib_LTLIBRARIES += gpfs.la
+gpfs_la_SOURCES = gpfs.c \
+		    lustre_common.h list.h \
+		    lustre_xml.c lustre_xml.h \
+		    lustre_config.c lustre_config.h
+gpfs_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
+gpfs_la_LDFLAGS = -module -avoid-version
+gpfs_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
+collectd_LDADD += gpfs.la
+collectd_DEPENDENCIES += gpfs.la
+endif
+
 if BUILD_PLUGIN_NGINX
 pkglib_LTLIBRARIES += nginx.la
 nginx_la_SOURCES = nginx.c

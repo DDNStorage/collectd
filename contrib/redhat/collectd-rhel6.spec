@@ -28,6 +28,7 @@
 %define with_fscache 0%{!?_without_fscache:1}
 %define with_ganglia 0%{!?_without_ganglia:1}
 %define with_gmond 0%{!?_without_gmond:1}
+%define with_gpfs 0%{!?_without_gpfs:1}
 %define with_hddtemp 0%{!?_without_hddtemp:1}
 %define with_interface 0%{!?_without_interface:1}
 %define with_ipmi 0%{!?_without_ipmi:1}
@@ -262,6 +263,15 @@ BuildRequires:	ganglia-devel
 %description gmond
 The gmond plugin subscribes to a Multicast group to receive data from gmond,
 the client daemon of the Ganglia project.
+%endif
+
+%if %{with_gpfs}
+%package gpfs
+Summary:	GPFS plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description gpfs
+GPFS plugin for collectd.
 %endif
 
 %if %{with_hddtemp}
@@ -753,6 +763,12 @@ Development files for libcollectdclient
 %define _with_gmond --enable-gmond
 %else
 %define _with_gmond --disable-gmond
+%endif
+
+%if %{with_gpfs}
+%define _with_gpfs --enable-gpfs
+%else
+%define _with_gpfs --disable-gpfs
 %endif
 
 %if %{with_hddtemp}
@@ -1267,6 +1283,7 @@ Development files for libcollectdclient
 	%{?_with_fscache} \
 	%{?_with_ganglia} \
 	%{?_with_gmond} \
+	%{?_with_gpfs} \
 	%{?_with_hddtemp} \
 	%{?_with_interface} \
 	%{?_with_ipmi} \
@@ -1504,6 +1521,9 @@ fi
 %if %{with_fscache}
 %{_libdir}/%{name}/fscache.so
 %endif
+%if %{with_gpfs}
+%{_libdir}/%{name}/gpfs.so
+%endif
 %if %{with_interface}
 %{_libdir}/%{name}/interface.so
 %endif
@@ -1711,6 +1731,11 @@ fi
 %if %{with_gmond}
 %files gmond
 %{_libdir}/%{name}/gmond.so
+%endif
+
+%if %{with_gpfs}
+%files gpfs
+%{_libdir}/%{name}/gpfs.so
 %endif
 
 %if %{with_hddtemp}
