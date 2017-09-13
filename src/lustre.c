@@ -24,9 +24,9 @@
 #include "common.h"
 #include "plugin.h"
 #include "list.h"
-#include "lustre_read.h"
+#include "filedata_read.h"
 
-struct lustre_configs *lustre_config_g = NULL;
+struct filedata_configs *lustre_config_g = NULL;
 
 static int lustre_read(void)
 {
@@ -37,19 +37,19 @@ static int lustre_read(void)
 		return -1;
 	}
 
-	if (!lustre_config_g->lc_definition.ld_root->le_active)
+	if (!lustre_config_g->fc_definition.fd_root->fe_active)
 		return 0;
 
-	lustre_config_g->lc_definition.ld_query_times++;
+	lustre_config_g->fc_definition.fd_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(lustre_config_g->lc_definition.ld_root,
-				 "/",
-				 &path_head);
+	return filedata_entry_read(lustre_config_g->fc_definition.fd_root,
+				   "/",
+				   &path_head);
 }
 
 static int lustre_config_internal(oconfig_item_t *ci)
 {
-	lustre_config_g = lustre_config(ci, NULL);
+	lustre_config_g = filedata_config(ci, NULL);
 	if (lustre_config_g == NULL) {
 		ERROR("failed to configure lustre");
 		return -1;
@@ -60,7 +60,7 @@ static int lustre_config_internal(oconfig_item_t *ci)
 static int lustre_shutdown()
 {
 	if (lustre_config_g)
-		lustre_definition_fini(&lustre_config_g->lc_definition);
+		filedata_definition_fini(&lustre_config_g->fc_definition);
 
 	return 0;
 }

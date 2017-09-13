@@ -581,44 +581,14 @@ endif # BUILD_PLUGIN_LOAD
 if BUILD_PLUGIN_SSH
 pkglib_LTLIBRARIES += ssh.la
 ssh_la_SOURCES = ssh.c \
-		 lustre_read.c lustre_read.h \
-		 lustre_common.h list.h \
-		 lustre_xml.c lustre_xml.h \
-		 lustre_config.c lustre_config.h
+		 filedata_read.c filedata_read.h \
+		 filedata_common.h list.h \
+		 filedata_xml.c filedata_xml.h \
+		 filedata_config.c filedata_config.h
 ssh_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS) $(BUILD_WITH_LIBSSH_CLFAGS)
 ssh_la_LDFLAGS = -module -avoid-version
 ssh_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS) $(BUILD_WITH_LIBSSH_LIBS) $(BUILD_WITH_LIBZMQ_LIBS)
 endif
-
-if BUILD_PLUGIN_LUSTRE
-pkglib_LTLIBRARIES += lustre.la
-lustre_la_SOURCES = lustre.c \
-		    lustre_read.c lustre_read.h \
-		    lustre_common.h list.h \
-		    lustre_xml.c lustre_xml.h \
-		    lustre_config.c lustre_config.h
-lustre_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
-lustre_la_LDFLAGS = -module -avoid-version
-lustre_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
-collectd_LDADD += lustre.la
-collectd_DEPENDENCIES += lustre.la
-
-bin_PROGRAMS += collectd-lustre
-collectd_lustre_SOURCES = collectd-lustre.c \
-			  lustre_common.h list.h\
-			  lustre_xml.c lustre_xml.h \
-			  lustre_config.c lustre_config.h
-collectd_lustre_CPPFLAGS = $(AM_CPPFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS) \
-			   -DLUSTRE_TOOL=1
-collectd_lustre_LDADD = $(BUILD_WITH_LIBXML2_LIBS) -lncurses -lpthread
-collectd_lustre_DEPENDENCIES =
-if BUILD_WITH_OWN_LIBOCONFIG
-collectd_lustre_LDADD +=liboconfig/liboconfig.la
-collectd_lustre_DEPENDENCIES = liboconfig/liboconfig.la
-else # !BUILD_WITH_OWN_LIBOCONFIG
-collectd_lustre_LDADD += -loconfig
-endif # !BUILD_WITH_OWN_LIBOCONFIG
-endif # BUILD_PLUGIN_LUSTRE
 
 if BUILD_PLUGIN_LOGFILE
 pkglib_LTLIBRARIES += logfile.la
@@ -835,10 +805,10 @@ endif
 if BUILD_PLUGIN_GPFS
 pkglib_LTLIBRARIES += gpfs.la
 gpfs_la_SOURCES = gpfs.c \
-		    lustre_read.c lustre_read.h \
-		    lustre_common.h list.h \
-		    lustre_xml.c lustre_xml.h \
-		    lustre_config.c lustre_config.h
+		    filedata_read.c filedata_read.h \
+		    filedata_common.h list.h \
+		    filedata_xml.c filedata_xml.h \
+		    filedata_config.c filedata_config.h
 gpfs_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
 gpfs_la_LDFLAGS = -module -avoid-version
 gpfs_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
@@ -849,10 +819,10 @@ endif
 if BUILD_PLUGIN_IME
 pkglib_LTLIBRARIES += ime.la
 ime_la_SOURCES = ime.c \
-		    lustre_read.c lustre_read.h \
-		    lustre_common.h list.h \
-		    lustre_xml.c lustre_xml.h \
-		    lustre_config.c lustre_config.h
+		    filedata_read.c filedata_read.h \
+		    filedata_common.h list.h \
+		    filedata_xml.c filedata_xml.h \
+		    filedata_config.c filedata_config.h
 ime_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
 ime_la_LDFLAGS = -module -avoid-version
 ime_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
@@ -861,10 +831,10 @@ endif
 if BUILD_PLUGIN_FILEDATA
 pkglib_LTLIBRARIES += filedata.la
 filedata_la_SOURCES = filedata.c \
-		    lustre_read.c lustre_read.h \
-		    lustre_common.h list.h \
-		    lustre_xml.c lustre_xml.h \
-		    lustre_config.c lustre_config.h
+		    filedata_read.c filedata_read.h \
+		    filedata_common.h list.h \
+		    filedata_xml.c filedata_xml.h \
+		    filedata_config.c filedata_config.h
 filedata_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
 filedata_la_LDFLAGS = -module -avoid-version
 filedata_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)

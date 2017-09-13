@@ -1,6 +1,6 @@
 /**
- * collectd - src/lustre_read.h
- * Copyright (C) 2014  Li Xi
+ * collectd - src/filedata_xml.h
+ * Copyright (C) 2013  Li Xi
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -19,13 +19,20 @@
  *   Li Xi <lixi at ddn.com>
  **/
 
-#ifndef LUSTRE_READ_H
-#define LUSTRE_READ_H
-#include "lustre_config.h"
-int
-lustre_entry_read(struct lustre_entry *entry,
-		  char *pwd,
-		  struct list_head *path_head);
-void lustre_subpath_fields_free(struct lustre_subpath_fields *fields);
-#endif /* LUSTRE_READ_H */
+#ifndef FILEDATA_XML_H
+#define FILEDATA_XML_H
+#include "filedata_config.h"
 
+int filedata_xml_parse(struct filedata_definition *definition, const char *xml_file);
+void filedata_entry_free(struct filedata_entry *entry);
+void filedata_entry_dump_active(struct filedata_entry *entry, int depth);
+void filedata_entry_dump(struct filedata_entry *entry, int depth);
+int
+filedata_option_name_extract(char *name,
+			     struct filedata_submit *submit,
+			     int *flag,
+			     struct filedata_submit_option **option);
+int
+filedata_option_init(struct filedata_submit_option *option,
+		     char *string);
+#endif /* FILEDATA_XML_H */

@@ -23,16 +23,16 @@
 #include "collectd.h"
 #include "common.h"
 #include "plugin.h"
-#include "lustre_config.h"
-#include "lustre_read.h"
- 
+#include "filedata_config.h"
+#include "filedata_read.h"
+
 
 #define START_FILE_SIZE (1048576)
 #define MAX_FILE_SIZE   (1048576 * 1024)
 #define IME_MAX_LENGTH (1024)
 #define IME_PATH_PREFIX "/opt/ddn/ime/bin"
 
-struct lustre_configs *ime_config_g;
+struct filedata_configs *ime_config_g;
 char pool_index[IME_MAX_LENGTH];
 
 static int run_command(const char *cmd, char **buf, ssize_t *data_size)
@@ -96,7 +96,7 @@ out_free:
 }
 
 static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
-			  void *ld_private_data)
+			  void *fd_private_data)
 {
 	char cmd[IME_MAX_LENGTH];
 	int ret;
@@ -119,13 +119,13 @@ static int ime_read(void)
 		return -1;
 	}
 
-	if (!ime_config_g->lc_definition.ld_root->le_active)
+	if (!ime_config_g->fc_definition.fd_root->fe_active)
 		return 0;
 
-	ime_config_g->lc_definition.ld_query_times++;
+	ime_config_g->fc_definition.fd_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(ime_config_g->lc_definition.ld_root, "/",
-				 &path_head);
+	return filedata_entry_read(ime_config_g->fc_definition.fd_root, "/",
+				   &path_head);
 }
 
 static int ime_config_internal(oconfig_item_t *ci)
@@ -158,12 +158,12 @@ static int ime_config_internal(oconfig_item_t *ci)
 	memcpy(pool_index, data, data_size - 1);
 	free(data);
 
-	ime_config_g = lustre_config(ci, NULL);
+	ime_config_g = filedata_config(ci, NULL);
 	if (ime_config_g == NULL) {
 		ERROR("failed to configure ime");
 		return -1;
 	}
-	ime_config_g->lc_definition.ld_read_file = ime_read_file;
+	ime_config_g->fc_definition.fd_read_file = ime_read_file;
 	return 0;
 }
 

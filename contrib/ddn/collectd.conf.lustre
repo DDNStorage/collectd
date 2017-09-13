@@ -13,8 +13,8 @@ LoadPlugin syslog
 	LogLevel err
 </Plugin>
 
-LoadPlugin lustre
-<Plugin "lustre">
+LoadPlugin filedata
+<Plugin "filedata">
   <Common>
     DefinitionFile "/etc/lustre-ieel-2.5.xml"
   </Common>
