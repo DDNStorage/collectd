@@ -2320,6 +2320,78 @@ zone_la_SOURCES = src/zone.c
 zone_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 endif
 
+# DDN Plugins
+if BUILD_PLUGIN_FILEDATA
+pkglib_LTLIBRARIES += filedata.la
+filedata_la_SOURCES = src/filedata.c \
+		    src/filedata_read.c src/filedata_read.h \
+		    src/filedata_common.h src/list.h \
+		    src/filedata_xml.c src/filedata_xml.h \
+		    src/filedata_config.c src/filedata_config.h
+filedata_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
+filedata_la_LDFLAGS = -module -avoid-version
+filedata_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
+endif
+
+if BUILD_PLUGIN_GANGLIA
+pkglib_LTLIBRARIES += ganglia.la
+ganglia_la_SOURCES = src/ganglia.c
+ganglia_la_CPPFLAGS = $(AM_CPPFLAGS) $(GANGLIA_CPPFLAGS)
+ganglia_la_LDFLAGS = -module -avoid-version $(GANGLIA_LDFLAGS)
+ganglia_la_LIBADD = $(GANGLIA_LIBS)
+endif
+
+if BUILD_PLUGIN_GPFS
+pkglib_LTLIBRARIES += gpfs.la
+gpfs_la_SOURCES = src/gpfs.c \
+		    src/filedata_read.c src/filedata_read.h \
+		    src/filedata_common.h src/list.h \
+		    src/filedata_xml.c src/filedata_xml.h \
+		    src/filedata_config.c src/filedata_config.h
+gpfs_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
+gpfs_la_LDFLAGS = -module -avoid-version
+gpfs_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
+endif
+
+if BUILD_PLUGIN_IME
+pkglib_LTLIBRARIES += ime.la
+ime_la_SOURCES = src/ime.c \
+		    src/filedata_read.c src/filedata_read.h \
+		    src/filedata_common.h src/list.h \
+		    src/filedata_xml.c src/filedata_xml.h \
+		    src/filedata_config.c src/filedata_config.h
+ime_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
+ime_la_LDFLAGS = -module -avoid-version
+ime_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
+endif
+
+if BUILD_PLUGIN_SSH
+pkglib_LTLIBRARIES += ssh.la
+ssh_la_SOURCES = src/ssh.c \
+		 src/filedata_read.c src/filedata_read.h \
+		 src/filedata_common.h src/list.h \
+		 src/filedata_xml.c src/filedata_xml.h \
+		 src/filedata_config.c src/filedata_config.h
+ssh_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS) $(BUILD_WITH_LIBSSH_CLFAGS)
+ssh_la_LDFLAGS = -module -avoid-version
+ssh_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS) $(BUILD_WITH_LIBSSH_LIBS) $(BUILD_WITH_LIBZMQ_LIBS)
+endif
+
+if BUILD_PLUGIN_STRESS
+pkglib_LTLIBRARIES += stress.la
+stress_la_SOURCES = src/stress.c
+stress_la_LDFLAGS = -module -avoid-version
+stress_la_LIBADD = -lpthread
+endif
+
+if BUILD_PLUGIN_ZABBIX
+pkglib_LTLIBRARIES += zabbix.la
+zabbix_la_SOURCES = src/zabbix.c \
+                         src/zbxjson.c src/zbxjson.h
+zabbix_la_LDFLAGS = -module -avoid-version
+zabbix_la_LIBADD =
+endif
+
 AM_V_POD2MAN_C = $(am__v_POD2MAN_C_@AM_V@)
 am__v_POD2MAN_C_ = $(am__v_POD2MAN_C_@AM_DEFAULT_V@)
 am__v_POD2MAN_C_0 = @echo "  POD2MAN " $@;
