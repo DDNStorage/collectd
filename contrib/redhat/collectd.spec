@@ -2504,6 +2504,10 @@ fi
 %{_includedir}/collectd/network.h
 %{_includedir}/collectd/network_buffer.h
 %{_includedir}/collectd/lcc_features.h
+%{_includedir}/collectd/network_parse.h
+%{_includedir}/collectd/server.h
+%{_includedir}/collectd/types.h
+
 %{_libdir}/pkgconfig/libcollectdclient.pc
 %{_libdir}/libcollectdclient.so
 
