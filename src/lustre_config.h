@@ -304,7 +304,11 @@ struct lustre_configs {
 struct lustre_configs *lustre_config(oconfig_item_t *ci,
 				     struct lustre_private_definition *
 				     ld_private_definition);
-inline void *lustre_get_private_data(struct lustre_configs *conf);
+static inline void *lustre_get_private_data(struct lustre_configs *conf)
+{
+	return conf->lc_definition.ld_private_definition.ld_private_data;
+}
+
 int lustre_config_save(struct lustre_configs *conf,
 		       const char *config_file);
 void lustre_config_free(struct lustre_configs *conf);

@@ -62,6 +62,7 @@
 %define with_df 0%{!?_without_df:1}
 %define with_disk 0%{!?_without_disk:1}
 %define with_dns 0%{!?_without_dns:1}
+%define with_dpdkstat 0%{!?_without_dpdkstat:1}
 %define with_drbd 0%{!?_without_drbd:1}
 %define with_email 0%{!?_without_email:1}
 %define with_entropy 0%{!?_without_entropy:1}
@@ -1223,6 +1224,12 @@ The zabbix plugin send key and value to zabbix server
 %define _with_dns --disable-dns
 %endif
 
+%if %{with_dpdkstat}
+%define _with_dpdkstat --enable-dpdkstat
+%else
+%define _with_dpdkstat --disable-dpdkstat
+%endif
+
 %if %{with_drbd}
 %define _with_drbd --enable-drbd
 %else
@@ -2007,6 +2014,7 @@ The zabbix plugin send key and value to zabbix server
 	%{?_with_df} \
 	%{?_with_disk} \
 	%{?_with_dns} \
+	%{?_with_dpdkstat} \
 	%{?_with_drbd} \
 	%{?_with_dpdkevents} \
 	%{?_with_dpdkstat} \
@@ -2124,7 +2132,7 @@ The zabbix plugin send key and value to zabbix server
 	%{?_with_xmms} \
 	%{?_with_zfs_arc} \
 	%{?_with_zone} \
-	%{?_with_zookeeper}
+	%{?_with_zookeeper} \
 	%{?_with_ganglia} \
 	%{?_with_gpfs} \
 	%{?_with_lustre} \
@@ -2301,6 +2309,9 @@ fi
 %endif
 %if %{with_drbd}
 %{_libdir}/%{name}/drbd.so
+%endif
+%if %{with_dpdkstat}
+%{_libdir}/%{name}/dpdkstat.so
 %endif
 %if %{with_ethstat}
 %{_libdir}/%{name}/ethstat.so
