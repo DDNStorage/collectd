@@ -84,6 +84,7 @@ struct wt_callback {
 
   bool store_rates;
   bool always_append_ds;
+  bool derive_rate;
 
   char send_buf[WT_SEND_BUF_SIZE];
   size_t send_buf_free;
@@ -338,7 +339,8 @@ static int wt_flush(cdtime_t timeout,
 
 static int wt_format_values(char *ret, size_t ret_len, int ds_num,
                             const data_set_t *ds, const value_list_t *vl,
-                            bool store_rates) {
+                            bool store_rates,
+                            bool derive_rate) {
   size_t offset = 0;
   int status;
   gauge_t *rates = NULL;
@@ -362,7 +364,8 @@ static int wt_format_values(char *ret, size_t ret_len, int ds_num,
 
   if (ds->ds[ds_num].type == DS_TYPE_GAUGE)
     BUFFER_ADD(GAUGE_FORMAT, vl->values[ds_num].gauge);
-  else if (store_rates || ds->ds[ds_num].type == DS_TYPE_DERIVE)
+  else if (store_rates ||
+           (derive_rate && ds->ds[ds_num].type == DS_TYPE_DERIVE)
     if (rates == NULL)
       rates = uc_get_rate(ds, vl);
     if (rates == NULL) {
@@ -373,6 +376,8 @@ static int wt_format_values(char *ret, size_t ret_len, int ds_num,
     BUFFER_ADD(GAUGE_FORMAT, rates[ds_num]);
   } else if (ds->ds[ds_num].type == DS_TYPE_COUNTER)
     BUFFER_ADD("%" PRIu64, (uint64_t)vl->values[ds_num].counter);
+  else if (ds->ds[ds_num].type == DS_TYPE_DERIVE)
+    BUFFER_ADD("%" PRIi64, vl->values[ds_num].derive);
   else if (ds->ds[ds_num].type == DS_TYPE_ABSOLUTE)
     BUFFER_ADD("%" PRIu64, vl->values[ds_num].absolute);
   else {
@@ -574,7 +579,8 @@ static int wt_write_messages(const data_set_t *ds, const value_list_t *vl,
     /* Convert the values to an ASCII representation and put that into
      * 'values'. */
     status =
-        wt_format_values(values, sizeof(values), i, ds, vl, cb->store_rates);
+        wt_format_values(values, sizeof(values), i, ds, vl, cb->store_rates,
+                         cb->derive_rate);
     if (status != 0) {
       ERROR("write_tsdb plugin: error with "
             "wt_format_values");
@@ -635,6 +641,8 @@ static int wt_config_tsd(oconfig_item_t *ci) {
       cf_util_get_string(child, &cb->host_tags);
     else if (strcasecmp("StoreRates", child->key) == 0)
       cf_util_get_boolean(child, &cb->store_rates);
+    else if (strcasecmp("DeriveRate", child->key) == 0)
+      cf_util_get_boolean(child, &cb->derive_rate);
     else if (strcasecmp("AlwaysAppendDS", child->key) == 0)
       cf_util_get_boolean(child, &cb->always_append_ds);
     else {
