@@ -362,7 +362,7 @@ static int wt_format_values(char *ret, size_t ret_len, int ds_num,
 
   if (ds->ds[ds_num].type == DS_TYPE_GAUGE)
     BUFFER_ADD(GAUGE_FORMAT, vl->values[ds_num].gauge);
-  else if (store_rates) {
+  else if (store_rates || ds->ds[ds_num].type == DS_TYPE_DERIVE)
     if (rates == NULL)
       rates = uc_get_rate(ds, vl);
     if (rates == NULL) {
@@ -373,8 +373,6 @@ static int wt_format_values(char *ret, size_t ret_len, int ds_num,
     BUFFER_ADD(GAUGE_FORMAT, rates[ds_num]);
   } else if (ds->ds[ds_num].type == DS_TYPE_COUNTER)
     BUFFER_ADD("%" PRIu64, (uint64_t)vl->values[ds_num].counter);
-  else if (ds->ds[ds_num].type == DS_TYPE_DERIVE)
-    BUFFER_ADD("%" PRIi64, vl->values[ds_num].derive);
   else if (ds->ds[ds_num].type == DS_TYPE_ABSOLUTE)
     BUFFER_ADD("%" PRIu64, vl->values[ds_num].absolute);
   else {
