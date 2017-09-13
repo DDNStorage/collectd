@@ -1089,11 +1089,6 @@ void lustre_config_free(struct lustre_configs *conf)
 	free(conf);
 }
 
-inline void *lustre_get_private_data(struct lustre_configs *conf)
-{
-	return conf->lc_definition.ld_private_definition.ld_private_data;
-}
-
 struct lustre_configs *lustre_config(oconfig_item_t *ci,
 			struct lustre_private_definition *ld_private_definition)
 {

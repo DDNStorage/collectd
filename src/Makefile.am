@@ -610,11 +610,8 @@ collectd_lustre_SOURCES = collectd-lustre.c \
 			  lustre_config.c lustre_config.h
 collectd_lustre_CPPFLAGS = $(AM_CPPFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS) \
 			   -DLUSTRE_TOOL=1
-collectd_lustre_LDADD = $(BUILD_WITH_LIBXML2_LIBS) -lncurses
+collectd_lustre_LDADD = $(BUILD_WITH_LIBXML2_LIBS) -lncurses -lpthread
 collectd_lustre_DEPENDENCIES =
-if BUILD_WITH_LIBPTHREAD
-collectd_lustre_LDADD += -lpthread
-endif
 if BUILD_WITH_OWN_LIBOCONFIG
 collectd_lustre_LDADD +=liboconfig/liboconfig.la
 collectd_lustre_DEPENDENCIES = liboconfig/liboconfig.la
