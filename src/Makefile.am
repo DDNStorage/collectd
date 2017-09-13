@@ -578,6 +578,18 @@ load_la_LIBADD += -lperfstat
 endif
 endif # BUILD_PLUGIN_LOAD
 
+if BUILD_PLUGIN_SSH
+pkglib_LTLIBRARIES += ssh.la
+ssh_la_SOURCES = ssh.c \
+		 lustre_read.c lustre_read.h \
+		 lustre_common.h list.h \
+		 lustre_xml.c lustre_xml.h \
+		 lustre_config.c lustre_config.h
+ssh_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS) $(BUILD_WITH_LIBSSH_CLFAGS)
+ssh_la_LDFLAGS = -module -avoid-version
+ssh_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS) $(BUILD_WITH_LIBSSH_LIBS) $(BUILD_WITH_LIBZMQ_LIBS)
+endif
+
 if BUILD_PLUGIN_LUSTRE
 pkglib_LTLIBRARIES += lustre.la
 lustre_la_SOURCES = lustre.c \

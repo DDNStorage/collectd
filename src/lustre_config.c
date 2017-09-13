@@ -387,7 +387,7 @@ static void lustre_config_dump(struct lustre_configs *conf)
 	}
 }
 
-static int lustre_config_get_string (const oconfig_item_t *ci, char **ret_string)
+int lustre_config_get_string(const oconfig_item_t *ci, char **ret_string)
 {
 	char *string;
 
@@ -435,6 +435,8 @@ static int lustre_config_common(const oconfig_item_t *ci,
 	int status = 0;
 	char *definition_file;
 	char *root_path = NULL;
+	struct lustre_private_definition ld_private_definition =
+				conf->lc_definition.ld_private_definition;
 
 	for (i = 0; i < ci->children_num; i++) {
 		oconfig_item_t *child = ci->children + i;
@@ -459,6 +461,9 @@ static int lustre_config_common(const oconfig_item_t *ci,
 			status = lustre_config_get_string(child, &root_path);
 			if (status)
 				LERROR("Common: failed to init root path");
+		} else if (ld_private_definition.ld_private_config) {
+			status = ld_private_definition.ld_private_config(child,
+									 conf);
 		} else {
 			LERROR("Common: The \"%s\" key is not allowed"
 					"and will be ignored.", child->key);
@@ -768,12 +773,20 @@ static int lustre_config_item(const oconfig_item_t *ci,
 void lustre_config_free(struct lustre_configs *conf)
 {
 	assert(conf);
+	if (conf->lc_definition.ld_private_definition.ld_private_fini)
+		conf->lc_definition.ld_private_definition.ld_private_fini(conf);
 	lustre_definition_fini(&conf->lc_definition);
 
 	free(conf);
 }
 
-struct lustre_configs *lustre_config(oconfig_item_t *ci)
+inline void *lustre_get_private_data(struct lustre_configs *conf)
+{
+	return conf->lc_definition.ld_private_definition.ld_private_data;
+}
+
+struct lustre_configs *lustre_config(oconfig_item_t *ci,
+			struct lustre_private_definition *ld_private_definition)
 {
 	int i;
 	int status = 0;
@@ -783,6 +796,12 @@ struct lustre_configs *lustre_config(oconfig_item_t *ci)
 	if (config == NULL) {
 		LERROR("not enough memory\n");
 		return NULL;
+	}
+	config->lc_definition.ld_private_definition = *ld_private_definition;
+	if (ld_private_definition && ld_private_definition->ld_private_init) {
+		status = ld_private_definition->ld_private_init(config);
+		if (status < 0)
+			goto out;
 	}
 
 	for (i = 0; i < ci->children_num; i++)
