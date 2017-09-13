@@ -54,7 +54,9 @@ lustre_subpath_field_type_add(struct lustre_entry *entry,
 			      struct lustre_subpath_field_type *field_type)
 {
 	if (field_type->lpft_index != entry->le_subpath_field_number + 1) {
-		ERROR("index of field is false");
+		ERROR("index number of field is false, expecting %d, got %d",
+		      entry->le_subpath_field_number + 1,
+		      field_type->lpft_index);
 		return -1;
 	}
 	field_type->lpft_entry = entry;
@@ -165,6 +167,7 @@ lustre_entry_free(struct lustre_entry *entry)
 #define LUSTRE_XML_PATH			"path"
 #define LUSTRE_XML_REGULAR_EXPRESSION	"regular_expression"
 #define LUSTRE_XML_SUBPATH_FIELD 	"subpath_field"
+#define LUSTRE_XML_CONTEXT 		"context"
 
 static int string2mode(const char *string, mode_t *mode)
 {
@@ -434,7 +437,10 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 			field->lft_index = strtoull(value, NULL, 10);
 			if (field->lft_index != item->lit_field_number + 1) {
 				status = -1;
-				ERROR("XML: index %s of field is false", value);
+				ERROR("XML: index of field is false, "
+				      "expecting %d, got %d",
+				      item->lit_field_number + 1,
+				      field->lft_index);
 				xmlFree(value);
 				break;
 			}
@@ -474,8 +480,10 @@ lustre_xml_field_parse(struct lustre_item_type *item, xmlNode *node)
 		}
 	}
 
-	if (field->lft_flags != LUSTRE_FIELD_FLAG_FILLED) {
-		ERROR("XML: some fields of item is missing");
+	if ((field->lft_flags & LUSTRE_FIELD_FLAG_FILLED)
+	    != LUSTRE_FIELD_FLAG_FILLED) {
+		ERROR("XML: some fields of item is missing, flag = %d",
+		      field->lft_flags);
 		status = -1;
 	}
 
@@ -566,6 +574,24 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 				break;
 			}
 			item->lit_flags |= LUSTRE_ITEM_FLAG_FIELD;
+		} else if (strcmp((char *)tmp->name, LUSTRE_XML_CONTEXT) == 0) {
+			value = (char*)xmlNodeGetContent(tmp);
+			if (strlen(value) > MAX_NAME_LENGH) {
+				status = -1;
+				ERROR("XML: context %s is too long", value);
+				xmlFree(value);
+				break;
+			}
+			strcpy(item->lit_context, value);
+			xmlFree(value);
+			status = lustre_compile_regex(&item->lit_context_regex,
+						      item->lit_context);
+			if (status) {
+				ERROR("XML: failed to compile context %s",
+					item->lit_context);
+				break;
+			}
+			item->lit_flags |= LUSTRE_ITEM_FLAG_CONTEXT;
 		} else {
 			ERROR("XML: entry have a unknown child %s", tmp->name);
 			status = -1;
@@ -573,8 +599,10 @@ lustre_xml_item_parse(struct lustre_entry *entry, xmlNode *node)
 		}
 	}
 
-	if (item->lit_flags != LUSTRE_ITEM_FLAG_FILLED) {
-		ERROR("XML: some fields of item is missing");
+	if ((item->lit_flags & LUSTRE_ITEM_FLAG_FILLED)
+	    != LUSTRE_ITEM_FLAG_FILLED) {
+		ERROR("XML: some fields of item is missing, falg = %d",
+		      item->lit_flags);
 		status = -1;
 	}
 
@@ -789,7 +817,8 @@ lustre_xml_entry_parse(struct lustre_entry *parent, xmlNode *node)
 		}
 	}
 
-	if (child->le_flags != LUSTRE_ENTRY_FLAG_FILLED) {
+	if ((child->le_flags & LUSTRE_ENTRY_FLAG_FILLED)
+	    != LUSTRE_ENTRY_FLAG_FILLED) {
 		ERROR("XML: some fields of entry is missing");
 		status = -1;
 	}
