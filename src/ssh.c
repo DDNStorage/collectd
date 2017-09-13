@@ -1301,8 +1301,8 @@ static int ssh_config_internal(oconfig_item_t *ci)
 	ud.free_func = (void *)ssh_config_fini;
 
 	memset (callback_name, 0, sizeof (callback_name));
-	ssnprintf (callback_name, sizeof (callback_name),
-		   "ssh/%s", ssh_configs->active_host->host_name);
+	snprintf(callback_name, sizeof (callback_name),
+		 "ssh/%s", ssh_configs->active_host->host_name);
 
 	rc = plugin_register_complex_read (/* group = */ NULL,
 				/* name      = */ callback_name,

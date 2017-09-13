@@ -71,8 +71,8 @@ static int filedata_config_internal(oconfig_item_t *ci)
 	ud.free_func = (void *)filedata_shutdown;
 
 	memset (callback_name, 0, sizeof (callback_name));
-	ssnprintf (callback_name, sizeof (callback_name),
-		   "filedata/%u", filedata_seq);
+	snprintf(callback_name, sizeof (callback_name),
+		 "filedata/%u", filedata_seq);
 	filedata_seq++;
 
 	rc = plugin_register_complex_read (/* group = */ NULL,
