@@ -747,6 +747,79 @@ static int fc_bit_write_invoke(const data_set_t *ds, /* {{{ */
   return FC_TARGET_CONTINUE;
 } /* }}} int fc_bit_write_invoke */
 
+static int fc_bit_write_once_invoke(const data_set_t *ds, /* {{{ */
+                                    value_list_t *vl,
+                                    notification_meta_t __attribute__((unused)) **meta,
+                                    void **user_data)
+{
+  fc_writer_t *plugin_list;
+  int status;
+
+  plugin_list = NULL;
+  if (user_data != NULL)
+    plugin_list = *user_data;
+
+  if ((plugin_list == NULL) || (plugin_list[0].plugin == NULL))
+  {
+    static c_complain_t write_complaint = C_COMPLAIN_INIT_STATIC;
+
+    status = plugin_write (/* plugin = */ NULL, ds, vl);
+    if (status == ENOENT)
+    {
+      /* in most cases this is a permanent error, so use the complain
+       * mechanism rather than spamming the logs */
+      c_complain (LOG_INFO, &write_complaint,
+          "Filter subsystem: Built-in target `write': Dispatching value to "
+          "all write plugins failed with status %i (ENOENT). "
+          "Most likely this means you didn't load any write plugins.",
+          status);
+
+      plugin_log_available_writers ();
+    }
+    else if (status != 0)
+    {
+      /* often, this is a permanent error (e.g. target system unavailable),
+       * so use the complain mechanism rather than spamming the logs */
+      c_complain (LOG_INFO, &write_complaint,
+          "Filter subsystem: Built-in target `write': Dispatching value to "
+          "all write plugins failed with status %i.", status);
+    }
+    else
+    {
+      assert (status == 0);
+      c_release (LOG_INFO, &write_complaint, "Filter subsystem: "
+          "Built-in target `write': Some write plugin is back to normal "
+          "operation. `write' succeeded.");
+    }
+  }
+  else
+  {
+    for (size_t i = 0; plugin_list[i].plugin != NULL; i++)
+    {
+      status = plugin_write (plugin_list[i].plugin, ds, vl);
+      if (status != 0)
+      {
+        c_complain (LOG_INFO, &plugin_list[i].complaint,
+            "Filter subsystem: Built-in target `write': Dispatching value to "
+            "the `%s' plugin failed with status %i.",
+            plugin_list[i].plugin, status);
+
+        plugin_log_available_writers ();
+      }
+      else
+      {
+        c_release (LOG_INFO, &plugin_list[i].complaint,
+            "Filter subsystem: Built-in target `write': Plugin `%s' is back "
+            "to normal operation. `write' succeeded.", plugin_list[i].plugin);
+      }
+    } /* for (i = 0; plugin_list[i] != NULL; i++) */
+  }
+  if (status == 0)
+	return (FC_TARGET_STOP);
+
+  return (FC_TARGET_CONTINUE);
+} /* }}} int fc_bit_write_once_invoke */
+
 static int fc_init_once(void) /* {{{ */
 {
   static int done;
@@ -777,6 +850,12 @@ static int fc_init_once(void) /* {{{ */
   tproc.destroy = fc_bit_write_destroy;
   tproc.invoke = fc_bit_write_invoke;
   fc_register_target("write", tproc);
+
+  memset (&tproc, 0, sizeof (tproc));
+  tproc.create  = fc_bit_write_create;
+  tproc.destroy = fc_bit_write_destroy;
+  tproc.invoke  = fc_bit_write_once_invoke;
+  fc_register_target ("write_once", tproc);
 
   done++;
   return 0;
