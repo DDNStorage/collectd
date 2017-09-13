@@ -163,6 +163,7 @@
 %define with_zookeeper 0%{!?_without_zookeeper:1}
 
 # DDN plugins
+%define with_filedata 0%{!?_without_filedata:1}
 %define with_ganglia 0%{!?_without_ganglia:1}
 %define with_gpfs 0%{!?_without_gpfs:1}
 %define with_ime 0%{!?_without_ime:1}
@@ -1009,6 +1010,15 @@ Requires:	collectd%{?_isa} = %{version}-%{release}
 Collectd utilities
 
 # DDN plugins
+%if %{with_filedata}
+%package filedata
+Summary:	Filedata plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description filedata
+Filedata plugin for collectd.
+%endif
+
 %if %{with_ganglia}
 %package ganglia
 Summary:	Ganglia plugin for collectd
@@ -1972,6 +1982,12 @@ The zabbix plugin send key and value to zabbix server
 %define _with_lustre --disable-lustre
 %endif
 
+%if %{with_filedata}
+%define _with_filedata --enable-filedata
+%else
+%define _with_filedata --disable-filedata
+%endif
+
 %if %{with_ssh}
 %define _with_ssh --enable-ssh
 %else
@@ -2040,6 +2056,7 @@ The zabbix plugin send key and value to zabbix server
 	%{?_with_exec} \
 	%{?_with_fhcount} \
 	%{?_with_filecount} \
+	%{?_with_filedata} \
 	%{?_with_fscache} \
 	%{?_with_gmond} \
 	%{?_with_gps} \
@@ -2861,6 +2878,11 @@ fi
 %doc contrib/
 
 # DDN plugins
+%if %{with_filedata}
+%files filedata
+%{_libdir}/%{name}/filedata.so
+%endif
+
 %if %{with_ganglia}
 %files ganglia
 %{_libdir}/%{name}/ganglia.so
