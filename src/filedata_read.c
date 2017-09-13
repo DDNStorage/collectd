@@ -1,5 +1,5 @@
 /**
- * collectd - src/lustre.c
+ * collectd - src/filedata_read.c
  * Copyright (C) 2013  Li Xi
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -24,19 +24,19 @@
 #include "common.h"
 #include "plugin.h"
 #include "list.h"
-#include "lustre_common.h"
-#include "lustre_xml.h"
-#include "lustre_config.h"
-#include "lustre_read.h"
+#include "filedata_common.h"
+#include "filedata_xml.h"
+#include "filedata_config.h"
+#include "filedata_read.h"
 
-static void lustre_instance_submit(const char *host,
-				   const char *plugin,
-				   const char *plugin_instance,
-				   const char *type,
-				   const char *type_instance,
-				   const char *tsdb_name,
-				   const char *tsdb_tags,
-				   uint64_t value)
+static void filedata_instance_submit(const char *host,
+				     const char *plugin,
+				     const char *plugin_instance,
+				     const char *type,
+				     const char *type_instance,
+				     const char *tsdb_name,
+				     const char *tsdb_tags,
+				     uint64_t value)
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
@@ -57,7 +57,7 @@ static void lustre_instance_submit(const char *host,
 
 	vl.meta = meta_data_create();
 	if (vl.meta == NULL) {
-		LERROR("Submit: meta_data_create failed");
+		FERROR("Submit: meta_data_create failed");
 		return;
 	}
 	vl.values = values;
@@ -70,15 +70,15 @@ static void lustre_instance_submit(const char *host,
 	sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
 	status = meta_data_add_string(vl.meta, "tsdb_name", tsdb_name);
 	if (status != 0) {
-		LERROR("Submit: meta_data_add_string failed");
+		FERROR("Submit: meta_data_add_string failed");
 		goto out;
 	}
 	status = meta_data_add_string(vl.meta, "tsdb_tags", tsdb_tags);
 	if (status != 0) {
-		LERROR("Submit: meta_data_add_string failed");
+		FERROR("Submit: meta_data_add_string failed");
 		goto out;
 	}
-	LINFO("host %s, "
+	FINFO("host %s, "
 	      "plugin %s, "
 	      "plugin_instance %s, "
 	      "type %s, "
@@ -101,48 +101,48 @@ out:
 	vl.meta = NULL;
 }
 
-static struct lustre_subpath_field *
-lustre_subpath_field_find(struct list_head *path_head,
-			  const char *name)
+static struct filedata_subpath_field *
+filedata_subpath_field_find(struct list_head *path_head,
+			    const char *name)
 {
-	static struct lustre_subpath_field *subpath_field;
-	struct lustre_subpath_fields *subpath_fields;
-	struct lustre_subpath_field_type *type;
+	static struct filedata_subpath_field *subpath_field;
+	struct filedata_subpath_fields *subpath_fields;
+	struct filedata_subpath_field_type *type;
 	int i;
 
 	list_for_each_entry(subpath_fields,
 			    path_head,
-			    lpfs_linkage) {
-		for (i = 1; i <= subpath_fields->lpfs_field_number; i++) {
-			subpath_field = &subpath_fields->lpfs_fileds[i];
-			type = subpath_field->lpf_type;
-			if (strcmp(type->lpft_name, name) == 0)
+			    fpfs_linkage) {
+		for (i = 1; i <= subpath_fields->fpfs_field_number; i++) {
+			subpath_field = &subpath_fields->fpfs_fileds[i];
+			type = subpath_field->fpf_type;
+			if (strcmp(type->fpft_name, name) == 0)
 				return subpath_field;
 		}
 	}
 	return NULL;
 }
 
-static struct lustre_field *
-lustre_field_find(struct lustre_field *fields,
-		  int content_field_number,
-		  const char *name)
+static struct filedata_field *
+filedata_field_find(struct filedata_field *fields,
+		    int content_field_number,
+		    const char *name)
 {
-	static struct lustre_field *content_field;
-	struct lustre_field_type *type;
+	static struct filedata_field *content_field;
+	struct filedata_field_type *type;
 	int i;
 
 	for (i = 1; i <= content_field_number; i++) {
 		content_field = &fields[i];
-		type = content_field->lf_type;
-		if (strcmp(type->lft_name, name) == 0)
+		type = content_field->ff_type;
+		if (strcmp(type->fft_name, name) == 0)
 			return content_field;
 	}
 
 	return NULL;
 }
 
-static int lustre_key_field_get(char *field, size_t size, const char *name)
+static int filedata_key_field_get(char *field, size_t size, const char *name)
 {
 	if (strcmp(name, "hostname") == 0) {
 		if (strlen(hostname_g) >= size) {
@@ -158,9 +158,9 @@ static int lustre_key_field_get(char *field, size_t size, const char *name)
 	return 0;
 }
 
-static int lustre_extag_value_find(const char *extra_tags,
-				   char *tag_value,
-				   const char *name)
+static int filedata_extag_value_find(const char *extra_tags,
+				     char *tag_value,
+				     const char *name)
 {
 	char *val;
 	size_t len, count = 0;
@@ -189,15 +189,15 @@ out:
 	return 0;
 }
 
-static int lustre_submit_option_get(struct lustre_submit_option *option,
-				    struct list_head *path_head,
-				    struct lustre_field_type **field_types,
-				    struct lustre_field *fields,
-				    int content_field_number,
-				    int content_index,
-				    char *value,
-				    int size,
-				    const char *ext_tags)
+static int filedata_submit_option_get(struct filedata_submit_option *option,
+				      struct list_head *path_head,
+				      struct filedata_field_type **field_types,
+				      struct filedata_field *fields,
+				      int content_field_number,
+				      int content_index,
+				      char *value,
+				      int size,
+				      const char *ext_tags)
 {
 	int status = 0;
 	regmatch_t matched_fields[3];
@@ -207,8 +207,8 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 	char *value_pointer = value;
 	char type[TYPE_NAME_LEN + 1];
 	char name[TYPE_NAME_LEN + 1];
-	struct lustre_subpath_field *subpath_field;
-	struct lustre_field *content_field;
+	struct filedata_subpath_field *subpath_field;
+	struct filedata_field *content_field;
 	char key_field[MAX_SUBMIT_STRING_LENGTH];
 	char tag_value[MAX_TSDB_TAGS_LENGTH];
 	const char *pattern = "\\$\\{(subpath|content|key|extra_tag):([^}]+)\\}";
@@ -218,7 +218,7 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 
 	if (regex_inited == 0) {
 		regex_inited = 1;
-		status = lustre_compile_regex(&regex, pattern);
+		status = filedata_compile_regex(&regex, pattern);
 		assert(status == 0);
 	}
 
@@ -269,26 +269,26 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 		}
 
 		if (strcmp(type, "subpath") == 0) {
-			subpath_field = lustre_subpath_field_find(path_head,
-								  name);
+			subpath_field = filedata_subpath_field_find(path_head,
+								    name);
 			if (subpath_field == NULL) {
 				ERROR("failed to get subpath for %s", name);
 				break;
 			}
-			match_value = subpath_field->lpf_value;
+			match_value = subpath_field->fpf_value;
 		} else if (strcmp(type, "content") == 0) {
-			content_field = lustre_field_find(fields,
-							  content_field_number,
-							  name);
+			content_field = filedata_field_find(fields,
+							    content_field_number,
+							    name);
 			if (content_field == NULL) {
 				ERROR("failed to get content for %s", name);
 				break;
 			}
-			match_value = content_field->lf_string;
+			match_value = content_field->ff_string;
 		} else if (strcmp(type, "key") == 0) {
-			status = lustre_key_field_get(key_field,
-						      sizeof(key_field),
-						      name);
+			status = filedata_key_field_get(key_field,
+						        sizeof(key_field),
+						        name);
 			if (status) {
 				ERROR("failed to get field of key \"%s\"",
 				      name);
@@ -297,14 +297,14 @@ static int lustre_submit_option_get(struct lustre_submit_option *option,
 			match_value = key_field;
 		} else if (strcmp(type, "extra_tag") == 0) {
 			assert(strlen(ext_tags) < MAX_TSDB_TAGS_LENGTH);
-			status = lustre_extag_value_find(ext_tags,
-							 tag_value, name);
+			status = filedata_extag_value_find(ext_tags,
+							   tag_value, name);
 			if (status) {
 				ERROR("failed to get value of extra tag %s %s",
 				      name, ext_tags);
 				break;
 			}
-			LINFO("Get extra_tag KV %s:%s from tags \"%s\"",
+			FINFO("Get extra_tag KV %s:%s from tags \"%s\"",
 			      name, tag_value, ext_tags);
 			match_value = tag_value;
 		} else {
@@ -339,16 +339,16 @@ out:
 	return status;
 }
 
-static int lustre_submit(struct lustre_submit *submit,
-			 struct list_head *path_head,
-			 struct lustre_field_type **field_types,
-			 struct lustre_field *fields,
-			 int content_field_number,
-			 int content_index,
-			 uint64_t value,
-			 const char *ext_tsdb_tags,
-			 int ext_tags_used,
-			 const char *ext_tags)
+static int filedata_submit(struct filedata_submit *submit,
+			   struct list_head *path_head,
+			   struct filedata_field_type **field_types,
+			   struct filedata_field *fields,
+			   int content_field_number,
+			   int content_index,
+			   uint64_t value,
+			   const char *ext_tsdb_tags,
+			   int ext_tags_used,
+			   const char *ext_tags)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
@@ -360,78 +360,78 @@ static int lustre_submit(struct lustre_submit *submit,
 	int status;
 	int n;
 
-	status = lustre_submit_option_get(&submit->ls_host,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, host,
-					  MAX_SUBMIT_STRING_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_host,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, host,
+					    MAX_SUBMIT_STRING_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get host");
 		return status;
 	}
 
-	status = lustre_submit_option_get(&submit->ls_plugin,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, plugin,
-					  MAX_SUBMIT_STRING_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_plugin,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, plugin,
+					    MAX_SUBMIT_STRING_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get plugin");
 		return status;
 	}
 
-	status = lustre_submit_option_get(&submit->ls_plugin_instance,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, plugin_instance,
-					  MAX_SUBMIT_STRING_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_plugin_instance,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, plugin_instance,
+					    MAX_SUBMIT_STRING_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get plugin_instance");
 		return status;
 	}
 
-	status = lustre_submit_option_get(&submit->ls_type,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, type,
-					  MAX_SUBMIT_STRING_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_type,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, type,
+					    MAX_SUBMIT_STRING_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get type");
 		return status;
 	}
 
-	status = lustre_submit_option_get(&submit->ls_type_instance,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, type_instance,
-					  MAX_SUBMIT_STRING_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_type_instance,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, type_instance,
+					    MAX_SUBMIT_STRING_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get type_instance");
 		return status;
 	}
 
-	status = lustre_submit_option_get(&submit->ls_tsdb_name,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, tsdb_name,
-					  MAX_SUBMIT_STRING_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_tsdb_name,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, tsdb_name,
+					    MAX_SUBMIT_STRING_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get tsdb_name");
 		return status;
 	}
 
-	status = lustre_submit_option_get(&submit->ls_tsdb_tags,
-					  path_head, field_types,
-					  fields, content_field_number,
-					  content_index, tsdb_tags,
-					  MAX_TSDB_TAGS_LENGTH,
-					  ext_tags);
+	status = filedata_submit_option_get(&submit->fs_tsdb_tags,
+					    path_head, field_types,
+					    fields, content_field_number,
+					    content_index, tsdb_tags,
+					    MAX_TSDB_TAGS_LENGTH,
+					    ext_tags);
 	if (status) {
 		ERROR("submit: failed to get tsdb_name");
 		return status;
@@ -460,93 +460,93 @@ static int lustre_submit(struct lustre_submit *submit,
 		strncat(tsdb_tags, ext_tags,
 			MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags));
 	} else if (ext_tags){
-		LERROR("submit: ignore overflow extra tsdb tags");
+		FERROR("submit: ignore overflow extra tsdb tags");
 	}
 
-	lustre_instance_submit(host, plugin, plugin_instance,
-			       type, type_instance,
-			       tsdb_name, tsdb_tags,
-			       value);
+	filedata_instance_submit(host, plugin, plugin_instance,
+				 type, type_instance,
+				 tsdb_name, tsdb_tags,
+				 value);
 	return status;
 }
 
-static int lustre_data_submit(struct lustre_item_type *type,
-			      struct list_head *path_head,
-			      struct lustre_item_data *data)
+static int filedata_data_submit(struct filedata_item_type *type,
+				struct list_head *path_head,
+				struct filedata_item_data *data)
 {
 	int i;
 
-	for (i = 1; i <= type->lit_field_number; i++) {
-		if (data->lid_fields[i].lf_allowed == 0)
+	for (i = 1; i <= type->fit_field_number; i++) {
+		if (data->fid_fields[i].ff_allowed == 0)
 			continue;
-		if (type->lit_field_array[i]->lft_type == TYPE_NUMBER)
-			lustre_submit(&type->lit_field_array[i]->lft_submit,
-				      path_head,
-				      type->lit_field_array,
-				      data->lid_fields,
-				      type->lit_field_number,
-				      i,
-				      data->lid_fields[i].lf_value,
-				      data->lid_ext_tags,
-				      data->lid_ext_tags_used,
-				      type->lit_definition->extra_tags);
+		if (type->fit_field_array[i]->fft_type == TYPE_NUMBER)
+			filedata_submit(&type->fit_field_array[i]->fft_submit,
+					path_head,
+					type->fit_field_array,
+					data->fid_fields,
+					type->fit_field_number,
+					i,
+					data->fid_fields[i].ff_value,
+					data->fid_ext_tags,
+					data->fid_ext_tags_used,
+					type->fit_definition->extra_tags);
 	}
 
 	return 0;
 }
 
-static struct lustre_item_data *
-lustre_item_data_alloc(struct lustre_item_type *type)
+static struct filedata_item_data *
+filedata_item_data_alloc(struct filedata_item_type *type)
 {
-	int field_number = type->lit_field_number;
-	struct lustre_item_data *data;
+	int field_number = type->fit_field_number;
+	struct filedata_item_data *data;
 	int i;
 
-	data = calloc(1, sizeof(struct lustre_item_data));
+	data = calloc(1, sizeof(struct filedata_item_data));
 	if (data == NULL)
 		return NULL;
 
-	data->lid_fields = calloc(field_number + 1,
-				  sizeof(struct lustre_field));
-	if (data->lid_fields == NULL) {
+	data->fid_fields = calloc(field_number + 1,
+				  sizeof(struct filedata_field));
+	if (data->fid_fields == NULL) {
 		free(data);
 		return NULL;
 	}
-	data->lid_filed_number = field_number;
+	data->fid_filed_number = field_number;
 
 	for (i = 1; i <= field_number; i++)
-		data->lid_fields[i].lf_type = type->lit_field_array[i];
+		data->fid_fields[i].ff_type = type->fit_field_array[i];
 	return data;
 }
 
 /* TODO: do we really need this? */
-static void lustre_item_data_clean(struct lustre_item_data *data)
+static void filedata_item_data_clean(struct filedata_item_data *data)
 {
 	int i;
-	for (i = 1; i <= data->lid_filed_number; i++) {
-		data->lid_fields[i].lf_string[0] = '\0';
-		data->lid_fields[i].lf_value = 0;
+	for (i = 1; i <= data->fid_filed_number; i++) {
+		data->fid_fields[i].ff_string[0] = '\0';
+		data->fid_fields[i].ff_value = 0;
 	}
 }
 
-static void lustre_item_data_free(struct lustre_item_data *data)
+static void filedata_item_data_free(struct filedata_item_data *data)
 {
-	free(data->lid_fields);
+	free(data->fid_fields);
 	free(data);
 }
 
-static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
-		struct lustre_item_data *data)
+static int filedata_item_extend_form_tsdbtags(struct filedata_item_type *itype,
+		struct filedata_item_data *data)
 {
 	int status = 0;
 	regmatch_t matched_fields[3];
-	char *pointer = itype->lit_ext_tags;
+	char *pointer = itype->fit_ext_tags;
 	char *match_value = NULL;
-	int max_size = sizeof(itype->lit_ext_tags) - 1;
-	char *value_pointer = data->lid_ext_tags;
+	int max_size = sizeof(itype->fit_ext_tags) - 1;
+	char *value_pointer = data->fid_ext_tags;
 	char type[TYPE_NAME_LEN + 1];
 	char name[TYPE_NAME_LEN + 1];
-	struct lustre_item_type_extend_field *ext_field;
+	struct filedata_item_type_extend_field *ext_field;
 	const char *pattern = "\\$\\{(extendfield):([^}]+)\\}";
 	static regex_t regex;
 	static int regex_inited = 0;
@@ -554,7 +554,7 @@ static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
 
 	if (regex_inited == 0) {
 		regex_inited = 1;
-		status = lustre_compile_regex(&regex, pattern);
+		status = filedata_compile_regex(&regex, pattern);
 		assert(status == 0);
 	}
 
@@ -581,44 +581,44 @@ static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
 			if (matched_fields[i].rm_so == -1)
 				break;
 			start = matched_fields[i].rm_so +
-				(pointer - itype->lit_ext_tags);
+				(pointer - itype->fit_ext_tags);
 			finish = matched_fields[i].rm_eo +
-				(pointer - itype->lit_ext_tags);
+				(pointer - itype->fit_ext_tags);
 
 			if ((i != 0) && ((finish - start) > TYPE_NAME_LEN)) {
 				status = -EINVAL;
-				LERROR("%s length: %d is too long",
+				FERROR("%s length: %d is too long",
 				       (i == 1) ? "type" : "name",
 				       finish - start);
 				goto out;
 			}
 
 			if (i == 1) {
-				strncpy(type, itype->lit_ext_tags + start,
+				strncpy(type, itype->fit_ext_tags + start,
 					finish - start);
 				type[finish - start] = '\0';
 			} else if (i == 2) {
-				strncpy(name, itype->lit_ext_tags + start,
+				strncpy(name, itype->fit_ext_tags + start,
 					finish - start);
 				name[finish - start] = '\0';
 			}
 		}
 
 		if (strcmp(type, "extendfield") == 0) {
-			ext_field = lustre_item_extend_field_find(itype, name);
+			ext_field = filedata_item_extend_field_find(itype, name);
 			if (ext_field == NULL) {
-				LERROR("failed to get extend field for %s", name);
+				FERROR("failed to get extend field for %s", name);
 				break;
 			}
-			match_value = ext_field->litef_value;
+			match_value = ext_field->fitef_value;
 		} else {
-			LERROR("unknown type \"%s\"", type);
+			FERROR("unknown type \"%s\"", type);
 			status = -EINVAL;
 			break;
 		}
 
 		if (strlen(match_value) + matched_fields[0].rm_so > max_size) {
-			LERROR("extend tsdb tags overflows: %d", max_size);
+			FERROR("extend tsdb tags overflows: %d", max_size);
 			status = -EINVAL;
 			break;
 		}
@@ -639,90 +639,90 @@ static int lustre_item_extend_form_tsdbtags(struct lustre_item_type *itype,
 		pointer += matched_fields[0].rm_eo;
 	}
 
-	LINFO("status: %d tsdb tags: %s", status, data->lid_ext_tags);
+	FINFO("status: %d tsdb tags: %s", status, data->fid_ext_tags);
 out:
 	return status;
 }
 
-static int lustre_item_extend_parse(struct lustre_item_type *type,
-			     struct lustre_item_data *data)
+static int filedata_item_extend_parse(struct filedata_item_type *type,
+				      struct filedata_item_data *data)
 {
-	struct lustre_item_type_extend *ext;
-	struct lustre_item_type_extend_field *ext_field;
+	struct filedata_item_type_extend *ext;
+	struct filedata_item_type_extend_field *ext_field;
 	regmatch_t *match_fields;
 	char *pos = NULL;
 	int len;
 	int status;
 
-	if (list_empty(&type->lit_extends))
+	if (list_empty(&type->fit_extends))
 		return 0;
 
-	list_for_each_entry(ext, &type->lit_extends, lite_linkage) {
-		assert(ext->lite_field_index <= type->lit_field_number);
-		match_fields = calloc(ext->lite_field_number + 1,
+	list_for_each_entry(ext, &type->fit_extends, fite_linkage) {
+		assert(ext->fite_field_index <= type->fit_field_number);
+		match_fields = calloc(ext->fite_field_number + 1,
 				      sizeof (regmatch_t));
 		if (match_fields == NULL) {
-			LERROR("Extended parse: not enough memory");
+			FERROR("Extended parse: not enough memory");
 			return -ENOMEM;
 		}
-		status = regexec(&ext->lite_regex,
-				 data->lid_fields[ext->lite_field_index].lf_string,
-				 ext->lite_field_number + 1,
+		status = regexec(&ext->fite_regex,
+				 data->fid_fields[ext->fite_field_index].ff_string,
+				 ext->fite_field_number + 1,
 				 match_fields,
 				 0);
 
 		if (status == REG_NOMATCH) {
-			LINFO("Extended parse: failed to parse field: \"%s\"",
-			    data->lid_fields[ext->lite_field_index].lf_string);
+			FINFO("Extended parse: failed to parse field: \"%s\"",
+			    data->fid_fields[ext->fite_field_index].ff_string);
 			free(match_fields);
 			status = -EINVAL;
 			goto out;
 		}
 
-		list_for_each_entry(ext_field, &ext->lite_fields, litef_linkage) {
-			assert(ext_field->litef_index <= ext->lite_field_number);
+		list_for_each_entry(ext_field, &ext->fite_fields, fitef_linkage) {
+			assert(ext_field->fitef_index <= ext->fite_field_number);
 
-			pos = data->lid_fields[ext->lite_field_index].lf_string +
-				match_fields[ext_field->litef_index].rm_so;
-			len = match_fields[ext_field->litef_index].rm_eo -
-				match_fields[ext_field->litef_index].rm_so;
+			pos = data->fid_fields[ext->fite_field_index].ff_string +
+				match_fields[ext_field->fitef_index].rm_so;
+			len = match_fields[ext_field->fitef_index].rm_eo -
+				match_fields[ext_field->fitef_index].rm_so;
 
-			strncpy(ext_field->litef_value, pos, len);
-			ext_field->litef_value[len] = '\0';
+			strncpy(ext_field->fitef_value, pos, len);
+			ext_field->fitef_value[len] = '\0';
 		}
 
 		free(match_fields);
 		match_fields = NULL;
 	}
 
-	status = lustre_item_extend_form_tsdbtags(type, data);
+	status = filedata_item_extend_form_tsdbtags(type, data);
 	if (status)
 		return status;
 
-	data->lid_ext_tags_used = 1;
+	data->fid_ext_tags_used = 1;
 
 out:
 	return status;
 }
 
-static int _lustre_parse(struct lustre_item_type *type,
-			 const char *content,
-			 struct list_head *path_head)
+static int _filedata_parse(struct filedata_item_type *type,
+			   const char *content,
+			   struct list_head *path_head)
 {
 	const char *previous = content;
 	regmatch_t *fields;
-	struct lustre_item_data *data;
+	struct filedata_item_data *data;
 	char string[MAX_JOBSTAT_FIELD_LENGTH];
 	unsigned long long value;
 	int status = 0;
 
-	fields = calloc(type->lit_field_number + 1, sizeof(regmatch_t));
+	fields = calloc(type->fit_field_number + 1, sizeof(regmatch_t));
 	if (fields == NULL) {
 		ERROR("parse: not enough memory");
 		return -1;
 	}
 
-	data = lustre_item_data_alloc(type);
+	data = filedata_item_data_alloc(type);
 	if (data == NULL) {
 		ERROR("parse: not enough memory");
 		status = -1;
@@ -731,14 +731,14 @@ static int _lustre_parse(struct lustre_item_type *type,
 
 	while (1) {
 		int i = 0;
-		int nomatch = regexec(&type->lit_regex, previous,
-				      type->lit_field_number + 1, fields, 0);
+		int nomatch = regexec(&type->fit_regex, previous,
+				      type->fit_field_number + 1, fields, 0);
 		if (nomatch)
 			break;
 
-		lustre_item_data_clean(data);
+		filedata_item_data_clean(data);
 
-		for (i = 0; i <= type->lit_field_number; i++) {
+		for (i = 0; i <= type->fit_field_number; i++) {
 			int start;
 			int finish;
 
@@ -763,44 +763,44 @@ static int _lustre_parse(struct lustre_item_type *type,
 					content + start, finish - start);
 				string[finish - start] = '\0';
 
-				strncpy(data->lid_fields[i].lf_string, string,
+				strncpy(data->fid_fields[i].ff_string, string,
 					MAX_JOBSTAT_FIELD_LENGTH);
-				LINFO("type %s, field %d, bytes %d:%d,"
+				FINFO("type %s, field %d, bytes %d:%d,"
 				      " value %s",
-				      type->lit_type_name, i,
+				      type->fit_type_name, i,
 				      start, finish, string);
-				value_type = type->lit_field_array[i]->lft_type;
+				value_type = type->fit_field_array[i]->fft_type;
 				if (value_type == TYPE_STRING) {
 					/* TODO: combine string algorithm */
 				} else if (value_type == TYPE_NUMBER) {
 					value = strtoull(string,
 							 NULL, 10);
-					data->lid_fields[i].lf_value = value;
+					data->fid_fields[i].ff_value = value;
 				} else {
 					assert(value_type == TYPE_NULL);
 				}
 			}
 		}
 
-		if (lustre_item_match(data->lid_fields,
-				      type->lit_field_number,
-				      type)) {
-			status = lustre_item_extend_parse(type, data);
+		if (filedata_item_match(data->fid_fields,
+					type->fit_field_number,
+					type)) {
+			status = filedata_item_extend_parse(type, data);
 			if (status == 0) {
-				lustre_data_submit(type, path_head, data);
+				filedata_data_submit(type, path_head, data);
 			} else {
-				LINFO("Parse: failed to do extended parse");
+				FINFO("Parse: failed to do extended parse");
 			}
 		}
 		previous += fields[0].rm_eo;
 	}
-	lustre_item_data_free(data);
+	filedata_item_data_free(data);
 out:
 	free(fields);
 	return status;
 }
 
-static int lustre_parse_context(struct lustre_item_type *type,
+static int filedata_parse_context(struct filedata_item_type *type,
 				const char *content,
 				struct list_head *path_head)
 {
@@ -809,7 +809,7 @@ static int lustre_parse_context(struct lustre_item_type *type,
 	char *buf;
 	int status = 0;
 
-	fields = calloc(type->lit_context_regex.re_nsub + 1,
+	fields = calloc(type->fit_context_regex.re_nsub + 1,
 			sizeof(regmatch_t));
 	if (fields == NULL) {
 		ERROR("parse: not enough memory");
@@ -826,8 +826,8 @@ static int lustre_parse_context(struct lustre_item_type *type,
 	while (1) {
 		int start;
 		int finish;
-		int nomatch = regexec(&type->lit_context_regex, previous,
-				      type->lit_context_regex.re_nsub + 1,
+		int nomatch = regexec(&type->fit_context_regex, previous,
+				      type->fit_context_regex.re_nsub + 1,
 				      fields, 0);
 		if (nomatch)
 			break;
@@ -837,7 +837,7 @@ static int lustre_parse_context(struct lustre_item_type *type,
 		strncpy(buf,
 			content + start, finish - start);
 
-		status = _lustre_parse(type, buf, path_head);
+		status = _filedata_parse(type, buf, path_head);
 		if (status)
 			break;
 		previous += fields[0].rm_eo;
@@ -849,7 +849,7 @@ out:
 	return status;
 }
 
-static int lustre_parse_context_subtype(struct lustre_item_type *type,
+static int filedata_parse_context_subtype(struct filedata_item_type *type,
 					const char *content,
 					struct list_head *path_head)
 {
@@ -868,18 +868,18 @@ static int lustre_parse_context_subtype(struct lustre_item_type *type,
 
 	/* avoid infinite loop */
 	while (previous - content < strlen(content)) {
-		p_start = strstr(previous, type->lit_context_start);
+		p_start = strstr(previous, type->fit_context_start);
 		if (!p_start)
 			break;
 
-		if (strlen(type->lit_context_end)) {
-			p_end = strstr(previous, type->lit_context_end);
+		if (strlen(type->fit_context_end)) {
+			p_end = strstr(previous, type->fit_context_end);
 			if (!p_end)
 				break;
 		}
 		strncpy(buf, previous, p_end - p_start + 1);
 
-		status = _lustre_parse(type, buf, path_head);
+		status = _filedata_parse(type, buf, path_head);
 		if (status)
 			break;
 		previous += (p_end - p_start + 1);
@@ -890,22 +890,22 @@ out:
 	return status;
 }
 
-static int lustre_parse(struct lustre_item_type *type,
+static int filedata_parse(struct filedata_item_type *type,
 			const char *content,
 			struct list_head *path_head)
 {
-	if (type->lit_flags & LUSTRE_ITEM_FLAG_CONTEXT)
-		return lustre_parse_context(type, content, path_head);
-	else if (type->lit_flags & LUSTRE_ITEM_FLAG_CONTEXT_SUBTYPE)
-		return lustre_parse_context_subtype(type, content, path_head);
+	if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT)
+		return filedata_parse_context(type, content, path_head);
+	else if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_SUBTYPE)
+		return filedata_parse_context_subtype(type, content, path_head);
 	else
-		return _lustre_parse(type, content, path_head);
+		return _filedata_parse(type, content, path_head);
 }
 
 #define START_FILE_SIZE (1048576)
 #define MAX_FILE_SIZE   (1048576 * 1024)
 
-static int lustre_read_file(const char *path, char **buf, ssize_t *data_size)
+static int filedata_read_file(const char *path, char **buf, ssize_t *data_size)
 {
 	int bufsize = START_FILE_SIZE;
 	char *filebuf;
@@ -976,7 +976,7 @@ read_again:
 	close(fd);
 	*buf = filebuf;
 	*data_size = offset;
-	LINFO("buff size %d, file size :%zd:%zd",
+	FINFO("buff size %d, file size :%zd:%zd",
 	      bufsize, offset, strlen(filebuf));
 	return 0;
 err:
@@ -984,41 +984,41 @@ err:
 	return status;
 }
 
-static struct lustre_subpath_fields *
-lustre_subpath_fields_alloc(struct lustre_entry	*entry)
+static struct filedata_subpath_fields *
+filedata_subpath_fields_alloc(struct filedata_entry	*entry)
 {
-	struct lustre_subpath_fields *fields;
-	int field_number = entry->le_subpath_field_number;
-	struct lustre_subpath_field_type *path;
+	struct filedata_subpath_fields *fields;
+	int field_number = entry->fe_subpath_field_number;
+	struct filedata_subpath_field_type *path;
 	int i;
 
-	fields = calloc(1, sizeof(struct lustre_subpath_fields));
+	fields = calloc(1, sizeof(struct filedata_subpath_fields));
 	if (fields == NULL)
 		return NULL;
 
-	fields->lpfs_fileds = calloc(field_number + 1,
-				     sizeof(struct lustre_subpath_field));
-	if (fields->lpfs_fileds == NULL) {
+	fields->fpfs_fileds = calloc(field_number + 1,
+				     sizeof(struct filedata_subpath_field));
+	if (fields->fpfs_fileds == NULL) {
 		free(fields);
 		return NULL;
 	}
 
 	i = 1;
 	list_for_each_entry(path,
-			    &entry->le_subpath_field_types,
-			    lpft_linkage) {
-		fields->lpfs_fileds[i].lpf_type = path;
+			    &entry->fe_subpath_field_types,
+			    fpft_linkage) {
+		fields->fpfs_fileds[i].fpf_type = path;
 		i++;
 	}
 
-	INIT_LIST_HEAD(&fields->lpfs_linkage);
-	fields->lpfs_field_number = field_number;
+	INIT_LIST_HEAD(&fields->fpfs_linkage);
+	fields->fpfs_field_number = field_number;
 	return fields;
 }
 
-void lustre_subpath_fields_free(struct lustre_subpath_fields *fields)
+void filedata_subpath_fields_free(struct filedata_subpath_fields *fields)
 {
-	free(fields->lpfs_fileds);
+	free(fields->fpfs_fileds);
 	free(fields);
 }
 
@@ -1026,25 +1026,25 @@ void lustre_subpath_fields_free(struct lustre_subpath_fields *fields)
  Return 1 when matched, 0 if not, -1 if error.
 */
 static int
-lustre_subpath_match(char *string,
-		     struct lustre_entry *entry,
-		     struct list_head *path_head,
-		     struct lustre_subpath_fields **subpath)
+filedata_subpath_match(char *string,
+		       struct filedata_entry *entry,
+		       struct list_head *path_head,
+		       struct filedata_subpath_fields **subpath)
 {
 	const char *pointer = string;
 	regmatch_t *fields;
 	int i = 0;
 	int status = 0;
 	int matched = 0;
-	struct lustre_subpath_fields *subpath_fields;
+	struct filedata_subpath_fields *subpath_fields;
 
-	subpath_fields = lustre_subpath_fields_alloc(entry);
+	subpath_fields = filedata_subpath_fields_alloc(entry);
 	if (subpath_fields == NULL) {
 		ERROR("not enough memory");
 		return -1;
 	}
 
-	fields = calloc(entry->le_subpath_field_number + 1, sizeof(regmatch_t));
+	fields = calloc(entry->fe_subpath_field_number + 1, sizeof(regmatch_t));
 	if (fields == NULL) {
 		ERROR("not enough memory");
 		status = -1;
@@ -1052,9 +1052,9 @@ lustre_subpath_match(char *string,
 	}
 
 	while (1) {
-		status = regexec(&entry->le_subpath_regex,
+		status = regexec(&entry->fe_subpath_regex,
 				 pointer,
-				 entry->le_subpath_field_number + 1,
+				 entry->fe_subpath_field_number + 1,
 				 fields, 0);
 		if (status) {
 			if (matched != 1)
@@ -1068,19 +1068,19 @@ lustre_subpath_match(char *string,
 			break;
 		}
 		matched++;
-		for (i = 0; i <= entry->le_subpath_field_number; i++) {
+		for (i = 0; i <= entry->fe_subpath_field_number; i++) {
 			int start;
 			int finish;
-			struct lustre_subpath_field *field;
+			struct filedata_subpath_field *field;
 			if (fields[i].rm_so == -1)
 				break;
 			start = fields[i].rm_so + (pointer - string);
 			finish = fields[i].rm_eo + (pointer - string);
 			if (i != 0) {
-				field = &subpath_fields->lpfs_fileds[i];
-				strncpy(field->lpf_value,
+				field = &subpath_fields->fpfs_fileds[i];
+				strncpy(field->fpf_value,
 					string + start, finish - start);
-				LINFO("subpath %d, bytes %d:%d, value %.*s\n",
+				FINFO("subpath %d, bytes %d:%d, value %.*s\n",
 				      i,
 				      start, finish,
 				      (finish - start), string + start);
@@ -1090,10 +1090,10 @@ lustre_subpath_match(char *string,
 	}
 out:
 	if (status == 1) {
-		list_add_tail(&subpath_fields->lpfs_linkage, path_head);
+		list_add_tail(&subpath_fields->fpfs_linkage, path_head);
 		*subpath = subpath_fields;
 	} else {
-		lustre_subpath_fields_free(subpath_fields);
+		filedata_subpath_fields_free(subpath_fields);
 	}
 	free(fields);
 
@@ -1101,16 +1101,16 @@ out:
 }
 
 static int
-lustre_entry_read_directory(struct lustre_entry *entry,
-			    char *path,
-			    struct list_head *path_head)
+filedata_entry_read_directory(struct filedata_entry *entry,
+			      char *path,
+			      struct list_head *path_head)
 {
-	struct lustre_entry *child;
+	struct filedata_entry *child;
 	int status = 0;
 	struct stat st;
 
-	assert(list_empty(&entry->le_active_item_types));
-	assert(list_empty(&entry->le_item_types));
+	assert(list_empty(&entry->fe_active_item_types));
+	assert(list_empty(&entry->fe_item_types));
 
 	status = stat(path, &st);
 	if (status) {
@@ -1119,9 +1119,9 @@ lustre_entry_read_directory(struct lustre_entry *entry,
 	}
 
 	list_for_each_entry(child,
-			    &entry->le_active_children,
-			    le_active_linkage) {
-		status = lustre_entry_read(child, path, path_head);
+			    &entry->fe_active_children,
+			    fe_active_linkage) {
+		status = filedata_entry_read(child, path, path_head);
 		if (status)
 			WARNING("entry path: %s not found, continue", path);
 	}
@@ -1129,15 +1129,15 @@ lustre_entry_read_directory(struct lustre_entry *entry,
 }
 
 static int
-_lustre_entry_read(struct lustre_entry *entry,
-		   char *pwd,
-		   char *subpath,
-		   struct list_head *path_head)
+_filedata_entry_read(struct filedata_entry *entry,
+		     char *pwd,
+		     char *subpath,
+		     struct list_head *path_head)
 {
 	char path[MAX_NAME_LENGH + 1];
 	int status = 0;
 	char *filebuf;
-	struct lustre_item_type *type;
+	struct filedata_item_type *type;
 	ssize_t size;
 	int max_size = sizeof(path) - 1;
 
@@ -1155,68 +1155,68 @@ _lustre_entry_read(struct lustre_entry *entry,
 	}
 	strncat(path, subpath, max_size);
 	max_size -= strlen(subpath);
-	assert(entry->le_mode == S_IFREG || entry->le_mode == S_IFDIR);
+	assert(entry->fe_mode == S_IFREG || entry->fe_mode == S_IFDIR);
 
-	LINFO("going down to path %s", path);
-	if (entry->le_mode == S_IFREG) {
-		assert(list_empty(&entry->le_active_children));
-		assert(list_empty(&entry->le_children));
-		if (entry->le_definition->ld_read_file != NULL) {
-			status = entry->le_definition->ld_read_file(path,
+	FINFO("going down to path %s", path);
+	if (entry->fe_mode == S_IFREG) {
+		assert(list_empty(&entry->fe_active_children));
+		assert(list_empty(&entry->fe_children));
+		if (entry->fe_definition->fd_read_file != NULL) {
+			status = entry->fe_definition->fd_read_file(path,
 				&filebuf, &size,
-				(entry->le_definition)->ld_private_definition.ld_private_data);
+				(entry->fe_definition)->fd_private_definition.fd_private_data);
 		} else {
-			status = lustre_read_file(path, &filebuf, &size);
+			status = filedata_read_file(path, &filebuf, &size);
 		}
 		if (status) {
 			ERROR("unable to read file %s", path);
 			return status;
 		}
 		list_for_each_entry(type,
-				    &entry->le_active_item_types,
-				    lit_active_linkage) {
-			assert(!list_empty(&type->lit_items));
-			LINFO("parsing %s for type %s",
+				    &entry->fe_active_item_types,
+				    fit_active_linkage) {
+			assert(!list_empty(&type->fit_items));
+			FINFO("parsing %s for type %s",
 			      path,
-			      type->lit_type_name);
-			status = lustre_parse(type, filebuf, path_head);
+			      type->fit_type_name);
+			status = filedata_parse(type, filebuf, path_head);
 			if (status) {
 				ERROR("unable to parse file %s for type %s",
 				      path,
-				      type->lit_type_name);
+				      type->fit_type_name);
 				free(filebuf);
 				return status;
 			}
 		}
 		free(filebuf);
 	} else {
-		lustre_entry_read_directory(entry,
-					    path,
-					    path_head);
+		filedata_entry_read_directory(entry,
+					      path,
+					      path_head);
 	}
 	return 0;
 }
 
 int
-lustre_entry_read(struct lustre_entry *entry,
-		  char *pwd,
-		  struct list_head *path_head)
+filedata_entry_read(struct filedata_entry *entry,
+		    char *pwd,
+		    struct list_head *path_head)
 {
 	char *subpath;
 	int status = 0;
 	DIR *parent_dir;
 	struct dirent *dp;
-	struct lustre_subpath_fields *subpath_fields = NULL;
+	struct filedata_subpath_fields *subpath_fields = NULL;
 
-	assert(entry->le_active);
-	if (entry->le_subpath_type == SUBPATH_CONSTANT) {
-		subpath = entry->le_subpath;
-		return _lustre_entry_read(entry, pwd, subpath, path_head);
+	assert(entry->fe_active);
+	if (entry->fe_subpath_type == SUBPATH_CONSTANT) {
+		subpath = entry->fe_subpath;
+		return _filedata_entry_read(entry, pwd, subpath, path_head);
 	} else {
-		assert(entry->le_subpath_type == SUBPATH_REGULAR_EXPRESSION);
+		assert(entry->fe_subpath_type == SUBPATH_REGULAR_EXPRESSION);
 		parent_dir = opendir(pwd);
 		if (parent_dir == NULL) {
-			LINFO("unable to open proc directory: %s", pwd);
+			FINFO("unable to open proc directory: %s", pwd);
 			return -1;
 		}
 		while ((dp = readdir(parent_dir)) != NULL) {
@@ -1225,17 +1225,17 @@ lustre_entry_read(struct lustre_entry *entry,
 				continue;
 			}
 
-			status = lustre_subpath_match(dp->d_name,
-						      entry,
-						      path_head,
-						      &subpath_fields);
+			status = filedata_subpath_match(dp->d_name,
+							entry,
+							path_head,
+							&subpath_fields);
 			if (status == 1) {
 				subpath = dp->d_name;
-				status =  _lustre_entry_read(entry, pwd,
+				status =  _filedata_entry_read(entry, pwd,
 					subpath, path_head);
 
-				list_del_init(&subpath_fields->lpfs_linkage);
-				lustre_subpath_fields_free(subpath_fields);
+				list_del_init(&subpath_fields->fpfs_linkage);
+				filedata_subpath_fields_free(subpath_fields);
 				subpath_fields = NULL;
 
 				if (status)

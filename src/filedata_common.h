@@ -1,6 +1,6 @@
 /**
- * collectd - src/lustre_xml.h
- * Copyright (C) 2013  Li Xi
+ * collectd - src/filedata_common.h
+ * Copyright (C) 2014  Li Xi
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -19,20 +19,18 @@
  *   Li Xi <lixi at ddn.com>
  **/
 
-#ifndef LUSTRE_XML_H
-#define LUSTRE_XML_H
-#include "lustre_config.h"
+#ifdef FILEDATA_TOOL
+#include <stdio.h>
 
-int lustre_xml_parse(struct lustre_definition *definition, const char *xml_file);
-void lustre_entry_free(struct lustre_entry *entry);
-void lustre_entry_dump_active(struct lustre_entry *entry, int depth);
-void lustre_entry_dump(struct lustre_entry *entry, int depth);
-int
-lustre_option_name_extract(char *name,
-			   struct lustre_submit *submit,
-			   int *flag,
-			   struct lustre_submit_option **option);
-int
-lustre_option_init(struct lustre_submit_option *option,
-		   char *string);
-#endif /* LUSTRE_XML_H */
+#define FERROR(format, ...)                                                \
+do {                                                                       \
+    fprintf(stderr, "%s:%d:%s(): "                                         \
+            format"\n", __FILE__, __LINE__, __FUNCTION__, ## __VA_ARGS__); \
+} while (0)
+#define FINFO FERROR
+#else /* !FILEDATA_TOOL */
+#include "plugin.h"
+#define FERROR ERROR
+#define FINFO  INFO
+#endif /* !FILEDATA_TOOL */
+

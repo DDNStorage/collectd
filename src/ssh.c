@@ -7,9 +7,9 @@
 #include "plugin.h"
 #include "syslog.h"
 #include "collectd.h"
-#include "lustre_config.h"
-#include "lustre_read.h"
-#include "lustre_common.h"
+#include "filedata_config.h"
+#include "filedata_read.h"
+#include "filedata_common.h"
 #include <pthread.h>
 #include <sys/types.h>
 #include <regex.h>
@@ -74,14 +74,14 @@ static int check_config_path(const char *path)
 	int ret;
 
 	if (path[0] != '/') {
-		LERROR("ssh plugin: %s might be a relative path, please use absolute path",
+		FERROR("ssh plugin: %s might be a relative path, please use absolute path",
 			path);
 		return -EINVAL;
 	}
 
 	ret = access(path, F_OK);
 	if (ret) {
-		LERROR("ssh plugin: failed to access %s, %s", path, strerror(errno));
+		FERROR("ssh plugin: failed to access %s, %s", path, strerror(errno));
 		return -errno;
 	}
 	return 0;
@@ -120,7 +120,7 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 	ret = libssh2_knownhost_readfile(nh, ssh_configs->known_hosts,
 					 LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 	if (ret < 0)
-		LERROR("ssh plugin: ignored libssh2_knownhost_readfile return ret: %d", ret);
+		FERROR("ssh plugin: ignored libssh2_knownhost_readfile return ret: %d", ret);
 
 	fingerprint = libssh2_session_hostkey(session, &len, &type);
 	if (fingerprint) {
@@ -142,16 +142,16 @@ static int verify_knownhost(struct ssh_configs *ssh_configs,
 		libssh2_knownhost_free(nh);
 		switch (check) {
 		case LIBSSH2_KNOWNHOST_CHECK_FAILURE:
-			LERROR("ssh plugin: something prevented the check to be made");
+			FERROR("ssh plugin: something prevented the check to be made");
 			return -EPERM;
 		case LIBSSH2_KNOWNHOST_CHECK_NOTFOUND:
 		case LIBSSH2_KNOWNHOST_CHECK_MATCH:
 			return 0;
 		case LIBSSH2_KNOWNHOST_CHECK_MISMATCH:
-			LERROR("ssh plugin: host was found, but keys didn't match");
+			FERROR("ssh plugin: host was found, but keys didn't match");
 			return -EPERM;
 		default:
-			LERROR("ssh plugin: unknonwn host checks errors");
+			FERROR("ssh plugin: unknonwn host checks errors");
 			return -EPERM;
 		}
 		return 0;
@@ -233,7 +233,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 		pre_nbytes = nbytes;
 	}
 	if (rc < 0 && rc != LIBSSH2_ERROR_EAGAIN) {
-		LERROR("ssh plugin: libssh2_channel_write error: %s",
+		FERROR("ssh plugin: libssh2_channel_write error: %s",
 			strerror(errno));
 		return rc;
 	}
@@ -271,7 +271,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 		} while (rc > 0);
 
 		if (rc < 0 && rc != LIBSSH2_ERROR_EAGAIN) {
-			LERROR("ssh plugin: libssh2_channel_read error: %s",
+			FERROR("ssh plugin: libssh2_channel_read error: %s",
 				strerror(errno));
 			return rc;
 		} else if (rc == 0) {
@@ -287,7 +287,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 		if (pre_nbytes == nbytes &&
 		    end_string && nbytes > strlen(end_string) << 1 &&
 		    strstr(p + nbytes - strlen(end_string) - 1, end_string)) {
-			LINFO("ssh plugin: tried: %d times to match ssh terminator: %s",
+			FINFO("ssh plugin: tried: %d times to match ssh terminator: %s",
 			       count, end_string);
 			break;
 		} else if (pre_nbytes == nbytes && retry < total_retry) {
@@ -299,7 +299,7 @@ static int execute_remote_processes(LIBSSH2_SESSION *session,
 			retry = 0;
 			count++;
 		} else {
-			LERROR("ssh plugin: timeout but without "
+			FERROR("ssh plugin: timeout but without "
 				"ssh terminator found, considering enlarge timeout or check terminator?");
 			return -ETIMEDOUT;
 		}
@@ -331,7 +331,7 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 	while (1) {
 		ret = zmq_msg_init(request);
 		if (ret < 0) {
-			LERROR("ssh plugin: zmq_msg_init failed");
+			FERROR("ssh plugin: zmq_msg_init failed");
 			goto free_mem;
 		}
 #ifdef HAVE_ZMQ_NEW_VER
@@ -341,7 +341,7 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 #endif
 		if (ret < 0) {
 			zmq_msg_close(request);
-			LERROR("ssh plugin: zmq_msg_recv failed");
+			FERROR("ssh plugin: zmq_msg_recv failed");
 			goto free_mem;
 		}
 
@@ -368,7 +368,7 @@ static int zmq_msg_recv_once(zmq_msg_t *request, void *responder,
 				     &more_size);
 		zmq_msg_close(request);
 		if (ret < 0) {
-			LERROR("ssh plugin: zmq_getsockopt failed");
+			FERROR("ssh plugin: zmq_getsockopt failed");
 			msg_len = ret;
 			goto free_mem;
 		} else if (!more) {
@@ -437,14 +437,14 @@ static int init_client_zmq_connection(struct ssh_configs *ssh_configs)
 	ssh_configs->context = zmq_init(1);
 #endif
 	if (!ssh_configs->context) {
-		LERROR("ssh plugin: failed to create context, %s",
+		FERROR("ssh plugin: failed to create context, %s",
 			strerror(errno));
 		return -errno;
 	}
 	ssh_configs->requester = zmq_socket(ssh_configs->context,
 					     ZMQ_REQ);
 	if (!ssh_configs->requester) {
-		LERROR("ssh plugin: failed to create socket, %s",
+		FERROR("ssh plugin: failed to create socket, %s",
 			strerror(errno));
 		ret = -errno;
 		goto failed;
@@ -454,7 +454,7 @@ static int init_client_zmq_connection(struct ssh_configs *ssh_configs)
 		      ssh_configs->server_hosts[ssh_configs->cur_host]);
 	ret = zmq_connect(ssh_configs->requester, str);
 	if (ret) {
-		LERROR("ssh plugin: zmq client failed to connect, %s",
+		FERROR("ssh plugin: zmq client failed to connect, %s",
 			strerror(errno));
 		goto failed;
 	}
@@ -473,14 +473,14 @@ static int ssh_setup_socket(struct ssh_configs *ssh_configs)
 
 	rc = libssh2_init(0);
 	if (rc) {
-		LERROR("ssh plugin: failed to call libssh2_init, %s",
+		FERROR("ssh plugin: failed to call libssh2_init, %s",
 			strerror(errno));
 		return rc;
 	}
 
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
-		LERROR("ssh plugin: failed to socket, %s", strerror(errno));
+		FERROR("ssh plugin: failed to socket, %s", strerror(errno));
 		rc = -1;
 		goto failed1;
 	}
@@ -491,7 +491,7 @@ static int ssh_setup_socket(struct ssh_configs *ssh_configs)
 	sin.sin_addr.s_addr = hostaddr;
 	if (connect(sock, (struct sockaddr *)(&sin),
 			sizeof(struct sockaddr_in)) != 0) {
-		LERROR("ssh plugin: failed to connect, %s",
+		FERROR("ssh plugin: failed to connect, %s",
 			strerror(errno));
 		rc = -1;
 		goto failed2;
@@ -522,7 +522,7 @@ ssh_setup_session(struct ssh_configs *ssh_configs, int sock)
 	/* Create a session instance */
 	session = libssh2_session_init();
 	if (!session) {
-		LERROR("ssh plugin: libssh2_session_init failed");
+		FERROR("ssh plugin: libssh2_session_init failed");
 		return NULL;
 	}
 
@@ -535,7 +535,7 @@ ssh_setup_session(struct ssh_configs *ssh_configs, int sock)
 	while ((rc = libssh2_session_handshake(session, sock))
 			== LIBSSH2_ERROR_EAGAIN);
 	if (rc) {
-		LERROR("ssh plugin: failed to establish ssh session, %s",
+		FERROR("ssh plugin: failed to establish ssh session, %s",
 			strerror(errno));
 		goto free_session;
 	}
@@ -543,7 +543,7 @@ ssh_setup_session(struct ssh_configs *ssh_configs, int sock)
 	/* verify the server's identity */
 	rc = verify_knownhost(ssh_configs, session);
 	if (rc < 0) {
-		LERROR("ssh plugin: failed to verify knownhost: %s",
+		FERROR("ssh plugin: failed to verify knownhost: %s",
 			strerror(errno));
 		goto disconnect_session;
 	}
@@ -551,7 +551,7 @@ ssh_setup_session(struct ssh_configs *ssh_configs, int sock)
 	/* Authenticate ourselves */
 	rc = ssh_userauth_connection(session, ssh_configs);
 	if (rc) {
-		LERROR("ssh plugin: error authenticating with password, %d",
+		FERROR("ssh plugin: error authenticating with password, %d",
 			rc);
 		goto disconnect_session;
 	}
@@ -582,7 +582,7 @@ ssh_setup_channel(LIBSSH2_SESSION * session, int sock)
 			== LIBSSH2_ERROR_EAGAIN)
 		waitsocket(sock, session);
 	if (!channel) {
-		LERROR("ssh plugin: libssh2_channel_open_session failed: %s",
+		FERROR("ssh plugin: libssh2_channel_open_session failed: %s",
 			strerror(errno));
 		return NULL;
 	}
@@ -596,7 +596,7 @@ ssh_setup_channel(LIBSSH2_SESSION * session, int sock)
 			waitsocket(sock, session);
 	} while (rc == LIBSSH2_ERROR_EAGAIN);
 	if (rc) {
-		LERROR("ssh plugin: rc: %d, failed to request ptyn: %s",
+		FERROR("ssh plugin: rc: %d, failed to request ptyn: %s",
 			rc, strerror(errno));
 		goto failed;
 	}
@@ -608,7 +608,7 @@ ssh_setup_channel(LIBSSH2_SESSION * session, int sock)
 			waitsocket(sock, session);
 	} while (rc == LIBSSH2_ERROR_EAGAIN);
 	if (rc) {
-		LERROR("ssh plugin: failed to request shell on allocated pty: %s",
+		FERROR("ssh plugin: failed to request shell on allocated pty: %s",
 			strerror(errno));
 		goto failed;
 	}
@@ -665,7 +665,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 	context = zmq_init(1);
 #endif
 	if (!context) {
-		LERROR("ssh plugin: failed to create context, %s",
+		FERROR("ssh plugin: failed to create context, %s",
 			strerror(errno));
 		goto free_result;
 	}
@@ -673,7 +673,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 	/* start server zmq */
 	responder = zmq_socket(context, ZMQ_REP);
 	if (!responder) {
-		LERROR("ssh plugin: failed to create socket, %s",
+		FERROR("ssh plugin: failed to create socket, %s",
 			strerror(errno));
 		goto term_zmq;
 	}
@@ -682,7 +682,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 		      ssh_configs->server_hosts[ssh_configs->cur_host]);
 	rc = zmq_bind(responder, str);
 	if (rc) {
-		LERROR("ssh plugin: failed to bind %s, %s", str,
+		FERROR("ssh plugin: failed to bind %s, %s", str,
 			strerror(errno));
 		goto close_zmq;
 	}
@@ -707,7 +707,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 		rc = zmq_msg_recv_once(&request, responder, 0,
 				       &receive_buf, &receive_buf_len);
 		if (rc < 0) {
-			LERROR("ssh plugin: failed to receive message: ret: %d %s",
+			FERROR("ssh plugin: failed to receive message: ret: %d %s",
 				rc, strerror(errno));
 			goto cleanup_client_zmq;
 		}
@@ -719,7 +719,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 					      &result, &result_len,
 					      ssh_configs->terminator);
 		if (rc < 0) {
-			LERROR("ssh plugin: failed to execute remote command, rc %d, %s",
+			FERROR("ssh plugin: failed to execute remote command, rc %d, %s",
 				rc, receive_buf);
 			/* if we failed here, we need let sender know we failed here */
 			memcpy(result, ERROR_FORMAT, strlen(ERROR_FORMAT));
@@ -740,7 +740,7 @@ static int ssh_handle_request(struct ssh_configs *ssh_configs, int sock,
 #endif
 		zmq_msg_close(&reply);
 		if (rc < 0) {
-			LERROR("ssh plugin: failed to send results to collector, %s",
+			FERROR("ssh plugin: failed to send results to collector, %s",
 				strerror(errno));
 			break;
 		}
@@ -810,7 +810,7 @@ static void *ssh_connection_thread(void *arg)
 			ssh_cleanup_socket(sock);
 		}
 restart:
-		LERROR("ssh plugin: restart ssh connection background thread, sleep %d seconds",
+		FERROR("ssh plugin: restart ssh connection background thread, sleep %d seconds",
 		       conn_interval);
 
 		/* Try next failover node */
@@ -846,33 +846,33 @@ static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 	pthread_cond_init(&ssh_configs->cond_t, NULL);
 	if (!ssh_configs->server_hosts || !ssh_configs->user_name
 	    || !ssh_configs->num_hosts) {
-		LERROR("ssh plugin: At least give one host and user");
+		FERROR("ssh plugin: At least give one host and user");
 		return -EINVAL;
 	}
 	if (!ssh_configs->terminator) {
-		LERROR("ssh plugin: Please specify ssh terminal terminator");
+		FERROR("ssh plugin: Please specify ssh terminal terminator");
 		return -EINVAL;
 	}
 	if (!ssh_configs->public_keyfile &&
 	    ssh_configs->private_keyfile) {
-		LERROR("ssh plugin: keyfiles need to be given in pair, or both missing");
+		FERROR("ssh plugin: keyfiles need to be given in pair, or both missing");
 		return -EINVAL;
 	}
 	if (ssh_configs->public_keyfile &&
 	    !ssh_configs->private_keyfile) {
-		LERROR("ssh plugin: keyfiles need to be set in pair, or both missing");
+		FERROR("ssh plugin: keyfiles need to be set in pair, or both missing");
 		return -EINVAL;
 	}
 	if (!ssh_configs->public_keyfile && !ssh_configs->private_keyfile
 	    && !ssh_configs->user_password) {
-		LERROR("ssh plugin: both password and keyfiles are missing");
+		FERROR("ssh plugin: both password and keyfiles are missing");
 		return -EINVAL;
 	}
 	/* create thread that run in the background */
 	ret = pthread_create(&tid, NULL, ssh_connection_thread,
 			     (void *)ssh_configs);
 	if (ret < 0) {
-		LERROR("ssh plugin: failed to create thread, %s",
+		FERROR("ssh plugin: failed to create thread, %s",
 			strerror(errno));
 		return -errno;
 	}
@@ -881,12 +881,12 @@ static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 			  &ssh_configs->ssh_lock);
 	pthread_mutex_unlock(&ssh_configs->ssh_lock);
 	if (!ssh_configs->bg_running) {
-		LERROR("ssh plugin: background thread have been terminated");
+		FERROR("ssh plugin: background thread have been terminated");
 		return -1;
 	}
 	ret = pthread_detach(tid);
 	if (ret < 0) {
-		LERROR("ssh plugin: failed to pthread_detach, %s",
+		FERROR("ssh plugin: failed to pthread_detach, %s",
 			strerror(errno));
 		pthread_kill(tid, SIGKILL);
 		return -1;
@@ -896,7 +896,7 @@ static int ssh_plugin_init(struct ssh_configs *ssh_configs)
 }
 
 static int ssh_read_file(const char *path, char **buf, ssize_t *data_size,
-			 void *ld_private_data)
+			 void *fd_private_data)
 {
 	int ret;
 	zmq_msg_t request;
@@ -904,9 +904,9 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size,
 	char *receive_buf = NULL;
 	int receive_buf_len = DEFAULT_RECV_BUFSIZE;
 	char cmd[SSH_MAX_COMMAND_SIZE];
-	struct ssh_configs *ssh_configs = (struct ssh_configs *)ld_private_data;
+	struct ssh_configs *ssh_configs = (struct ssh_configs *)fd_private_data;
 	if (!ssh_configs->bg_running) {
-		LERROR("ssh plugin: background thread have been terminated");
+		FERROR("ssh plugin: background thread have been terminated");
 		return -EIO;
 	}
 	zmq_msg_init_size(&request, SSH_MAX_COMMAND_SIZE);
@@ -925,7 +925,7 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size,
 	ret = zmq_send(ssh_configs->requester, &request, 0);
 #endif
 	if (ret < 0) {
-		LERROR("ssh plugin: failed to send msg, %s",
+		FERROR("ssh plugin: failed to send msg, %s",
 			strerror(errno));
 		return ret;
 	}
@@ -941,13 +941,13 @@ static int ssh_read_file(const char *path, char **buf, ssize_t *data_size,
 	ret = zmq_msg_recv_once(&reply, ssh_configs->requester, 0,
 				&receive_buf, &receive_buf_len);
 	if (ret < 0) {
-		LERROR("ssh plugin: failed to receive msg, %s",
+		FERROR("ssh plugin: failed to receive msg, %s",
 			strerror(errno));
 		return ret;
 	}
 	/* Step4 Filter results */
 	if (!strncmp(receive_buf, ERROR_FORMAT, strlen(ERROR_FORMAT))) {
-		LERROR("ssh plugin: %s", receive_buf);
+		FERROR("ssh plugin: %s", receive_buf);
 		return -EIO;
 	}
 	/* Step5 Copy results */
@@ -965,22 +965,22 @@ failed:
 static int ssh_read(user_data_t *user_data)
 {
 	struct list_head path_head;
-	struct lustre_configs *ssh_configss = user_data->data;
+	struct filedata_configs *ssh_configss = user_data->data;
 
 	if (ssh_configss == NULL) {
-		LERROR("ssh plugin is not configured properly");
+		FERROR("ssh plugin is not configured properly");
 		return -1;
 	}
 
-	if (!ssh_configss->lc_definition.ld_root->le_active) {
-		LERROR("ssh plugin: root entry of ssh plugin is not activated");
+	if (!ssh_configss->fc_definition.fd_root->fe_active) {
+		FERROR("ssh plugin: root entry of ssh plugin is not activated");
 		return 0;
 	}
 
-	ssh_configss->lc_definition.ld_query_times++;
+	ssh_configss->fc_definition.fd_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(ssh_configss->lc_definition.ld_root, "/",
-				 &path_head);
+	return filedata_entry_read(ssh_configss->fc_definition.fd_root, "/",
+				   &path_head);
 }
 
 static int check_server_host(const char *host)
@@ -999,14 +999,14 @@ static int check_server_host(const char *host)
 }
 
 
-static int ssh_config_init(struct lustre_configs *lc)
+static int ssh_config_init(struct filedata_configs *lc)
 {
 	void *result;
 
 	result = calloc(1, sizeof(struct ssh_configs));
 	if (!result)
 		return -ENOMEM;
-	lc->lc_definition.ld_private_definition.ld_private_data = result;
+	lc->fc_definition.fd_private_definition.fd_private_data = result;
 	return 0;
 }
 
@@ -1053,7 +1053,7 @@ static int parse_server_hosts(struct ssh_configs *ssh_configs,
 
 	while (p) {
 		if (i >= MAX_FAILOVER_HOST_NUM) {
-			LERROR("ssh plugin: exceed max failover host num: %d",
+			FERROR("ssh plugin: exceed max failover host num: %d",
 				MAX_FAILOVER_HOST_NUM);
 			break;
 		}
@@ -1067,20 +1067,20 @@ static int parse_server_hosts(struct ssh_configs *ssh_configs,
 
 		ret = check_server_host(key_point);
 		if (ret) {
-			LERROR("ssh plugin: ignore invalid host: %s", key_point);
+			FERROR("ssh plugin: ignore invalid host: %s", key_point);
 			continue;
 		}
 
 		ret = host2ip(key_point, &ip);
 		if (ret) {
-			LERROR("ssh plugin: failed to parse host: %s to ip", key_point);
+			FERROR("ssh plugin: failed to parse host: %s to ip", key_point);
 			continue;
 		}
 
 		/* check duplicated hosts */
 		for (j = 0; j < ssh_configs->num_hosts; j++) {
 			if (!strcmp(ssh_configs->server_hosts[j], ip)) {
-				LERROR("ssh plugin: ignore duplicated failover host: %s, ip: %s",
+				FERROR("ssh plugin: ignore duplicated failover host: %s, ip: %s",
 					key_point, ip);
 				free(ip);
 				continue;
@@ -1096,23 +1096,23 @@ static int parse_server_hosts(struct ssh_configs *ssh_configs,
 }
 
 static int ssh_config_private(oconfig_item_t *ci,
-			      struct lustre_configs *conf)
+			      struct filedata_configs *conf)
 {
 	int ret = 0;
 	char *value = NULL;
 	DIR *dir;
 	struct ssh_configs *ssh_configs = (struct ssh_configs *)
-					lustre_get_private_data(conf);
+					filedata_get_private_data(conf);
 
-	ret = lustre_config_get_string(ci, &value);
+	ret = filedata_config_get_string(ci, &value);
 	if (ret) {
-		LERROR("ssh plugin: failed to get string");
+		FERROR("ssh plugin: failed to get string");
 		return ret;
 	}
 	if (strcasecmp("ServerHost", ci->key) == 0) {
 		ret = parse_server_hosts(ssh_configs, value);
 		if (ret)
-			LERROR("ssh plugin: invalid server hosts");
+			FERROR("ssh plugin: invalid server hosts");
 	} else if (strcasecmp("UserName", ci->key) == 0) {
 		free(ssh_configs->user_name);
 		ssh_configs->user_name = value;
@@ -1141,28 +1141,28 @@ static int ssh_config_private(oconfig_item_t *ci,
 		free(ssh_configs->ipc_dir);
 		dir = opendir(value);
 		if (!dir) {
-			LERROR("ssh plugin: failed to opendir %s",
+			FERROR("ssh plugin: failed to opendir %s",
 				ssh_configs->ipc_dir);
 		} else {
 			closedir(dir);
 		}
 		ssh_configs->ipc_dir = value;
 	} else if (strcasecmp("ZeromqPort", ci->key) == 0) {
-		LERROR("ssh plugin: ZeromqPort is deprecated, ignore it");
+		FERROR("ssh plugin: ZeromqPort is deprecated, ignore it");
 	} else {
 		free(value);
-		LERROR("ssh plugin: Common, The \"%s\" key is not allowed"
+		FERROR("ssh plugin: Common, The \"%s\" key is not allowed"
 				"and will be ignored.", ci->key);
 	}
 	return ret;
 
 }
 
-static void ssh_config_fini(struct lustre_configs *lc)
+static void ssh_config_fini(struct filedata_configs *lc)
 {
 	int i;
 	struct ssh_configs *ssh_configs = (struct ssh_configs *)
-				lustre_get_private_data(lc);
+				filedata_get_private_data(lc);
 	if (!ssh_configs)
 		return;
 	exit_client_zmq_connection(ssh_configs);
@@ -1183,28 +1183,28 @@ static void ssh_config_fini(struct lustre_configs *lc)
 
 static int ssh_config_internal(oconfig_item_t *ci)
 {
-	struct lustre_private_definition ld_private_definition;
-	struct lustre_configs *ssh_configss;
+	struct filedata_private_definition fd_private_definition;
+	struct filedata_configs *ssh_configss;
 	struct ssh_configs *ssh_configs;
 	user_data_t ud;
 	char callback_name[3*DATA_MAX_NAME_LEN];
 	int rc;
 
-	ld_private_definition.ld_private_init = ssh_config_init;
-	ld_private_definition.ld_private_config = ssh_config_private;
-	ld_private_definition.ld_private_fini = ssh_config_fini;
-	ssh_configss = lustre_config(ci, &ld_private_definition);
+	fd_private_definition.fd_private_init = ssh_config_init;
+	fd_private_definition.fd_private_config = ssh_config_private;
+	fd_private_definition.fd_private_fini = ssh_config_fini;
+	ssh_configss = filedata_config(ci, &fd_private_definition);
 	if (ssh_configss == NULL) {
-		LERROR("ssh plugin: failed to configure ssh");
+		FERROR("ssh plugin: failed to configure ssh");
 		return -EINVAL;
 	}
 
-	ssh_configss->lc_definition.ld_read_file = ssh_read_file;
-	ssh_configs = (struct ssh_configs *)lustre_get_private_data(ssh_configss);
+	ssh_configss->fc_definition.fd_read_file = ssh_read_file;
+	ssh_configs = (struct ssh_configs *)filedata_get_private_data(ssh_configss);
 
 	struct ssh_entry *ssh_entry = malloc(sizeof(struct ssh_entry));
 	if (!ssh_entry) {
-		LERROR("ssh plugin: failed allocate memory for ssh_entry");
+		FERROR("ssh plugin: failed allocate memory for ssh_entry");
 		return -ENOMEM;
 	}
 	ssh_entry->ssh_configs = ssh_configs;
@@ -1244,7 +1244,7 @@ static int ssh_plugin_init_once(void)
 		rc = ssh_plugin_init(ssh_entry->ssh_configs);
 		if (rc) {
 			i = ssh_entry->ssh_configs->cur_host;
-			LERROR("ssh plugin: failed to init ssh plugin for host: %s",
+			FERROR("ssh plugin: failed to init ssh plugin for host: %s",
 				ssh_entry->ssh_configs->server_hosts[i]);
 			failed++;
 			continue;

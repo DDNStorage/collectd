@@ -22,45 +22,45 @@
 #include "common.h"
 #include "plugin.h"
 #include "list.h"
-#include "lustre_read.h"
+#include "filedata_read.h"
 
 static unsigned int filedata_seq = 0;
 
 static int filedata_read(user_data_t *user_data)
 {
 	struct list_head path_head;
-	struct lustre_configs *filedata_configs = user_data->data;
+	struct filedata_configs *filedata_configs = user_data->data;
 
 	if (filedata_configs == NULL) {
 		ERROR("filedata plugin is not configured properly");
 		return -1;
 	}
 
-	if (!filedata_configs->lc_definition.ld_root->le_active)
+	if (!filedata_configs->fc_definition.fd_root->fe_active)
 		return 0;
 
-	filedata_configs->lc_definition.ld_query_times++;
+	filedata_configs->fc_definition.fd_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(filedata_configs->lc_definition.ld_root,
-				 "/",
-				 &path_head);
+	return filedata_entry_read(filedata_configs->fc_definition.fd_root,
+				   "/",
+				   &path_head);
 }
 
-static int filedata_shutdown(struct lustre_configs * filedata_configs)
+static int filedata_shutdown(struct filedata_configs * filedata_configs)
 {
 	if (filedata_configs)
-		lustre_definition_fini(&filedata_configs->lc_definition);
+		filedata_definition_fini(&filedata_configs->fc_definition);
 	return 0;
 }
 
 static int filedata_config_internal(oconfig_item_t *ci)
 {
-	struct lustre_configs *filedata_configs;
+	struct filedata_configs *filedata_configs;
 	user_data_t ud;
 	char callback_name[3*DATA_MAX_NAME_LEN];
 	int rc;
 
-	filedata_configs = lustre_config(ci, NULL);
+	filedata_configs = filedata_config(ci, NULL);
 	if (filedata_configs == NULL) {
 		ERROR("failed to configure filedata");
 		return -1;

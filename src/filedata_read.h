@@ -1,5 +1,5 @@
 /**
- * collectd - src/lustre_common.h
+ * collectd - src/filedata_read.h
  * Copyright (C) 2014  Li Xi
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -19,18 +19,13 @@
  *   Li Xi <lixi at ddn.com>
  **/
 
-#ifdef LUSTRE_TOOL
-#include <stdio.h>
-
-#define LERROR(format, ...)                                                \
-do {                                                                       \
-    fprintf(stderr, "%s:%d:%s(): "                                         \
-            format"\n", __FILE__, __LINE__, __FUNCTION__, ## __VA_ARGS__); \
-} while (0)
-#define LINFO LERROR
-#else /* !LUSTRE_TOOL */
-#include "plugin.h"
-#define LERROR ERROR
-#define LINFO  INFO
-#endif /* !LUSTRE_TOOL */
+#ifndef FILEDATA_READ_H
+#define FILEDATA_READ_H
+#include "filedata_config.h"
+int
+filedata_entry_read(struct filedata_entry *entry,
+		    char *pwd,
+		    struct list_head *path_head);
+void filedata_subpath_fields_free(struct filedata_subpath_fields *fields);
+#endif /* FILEDATA_READ_H */
 

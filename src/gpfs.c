@@ -23,10 +23,10 @@
 #include "collectd.h"
 #include "common.h"
 #include "plugin.h"
-#include "lustre_config.h"
-#include "lustre_read.h"
+#include "filedata_config.h"
+#include "filedata_read.h"
 
-struct lustre_configs *gpfs_config_g;
+struct filedata_configs *gpfs_config_g;
 
 #define START_FILE_SIZE (1048576)
 #define MAX_FILE_SIZE   (1048576 * 1024)
@@ -36,7 +36,7 @@ struct lustre_configs *gpfs_config_g;
 #define GPFS_MAX_LENGTH (1024)
 
 static int gpfs_read_file(const char *path, char **buf, ssize_t *data_size,
-			  void *ld_private_data)
+			  void *fd_private_data)
 {
 	char cmd_file[sizeof(GPFS_CMD_FILE) + 1];
 	char cmd[GPFS_MAX_LENGTH];
@@ -145,23 +145,23 @@ static int gpfs_read(void)
 		return -1;
 	}
 
-	if (!gpfs_config_g->lc_definition.ld_root->le_active)
+	if (!gpfs_config_g->fc_definition.fd_root->fe_active)
 		return 0;
 
-	gpfs_config_g->lc_definition.ld_query_times++;
+	gpfs_config_g->fc_definition.fd_query_times++;
 	INIT_LIST_HEAD(&path_head);
-	return lustre_entry_read(gpfs_config_g->lc_definition.ld_root, "/",
+	return filedata_entry_read(gpfs_config_g->fc_definition.fd_root, "/",
 				 &path_head);
 }
 
 static int gpfs_config_internal(oconfig_item_t *ci)
 {
-	gpfs_config_g = lustre_config(ci, NULL);
+	gpfs_config_g = filedata_config(ci, NULL);
 	if (gpfs_config_g == NULL) {
 		ERROR("failed to configure gpfs");
 		return -1;
 	}
-	gpfs_config_g->lc_definition.ld_read_file = gpfs_read_file;
+	gpfs_config_g->fc_definition.fd_read_file = gpfs_read_file;
 	return 0;
 }
 
