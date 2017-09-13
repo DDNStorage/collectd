@@ -48,6 +48,9 @@
 #include "utils_cache.h"
 #include "utils_random.h"
 
+#include <pthread.h>
+#include <sys/socket.h>
+#include <syslog.h>
 #include <netdb.h>
 
 #ifndef WT_DEFAULT_NODE
@@ -159,6 +162,19 @@ static cdtime_t new_random_ttl(void) {
   return (cdtime_t)cdrand_range(0, (long)resolve_jitter);
 }
 
+#define MAX_CONNECT_INTERVAL	60
+#define DEFAULT_CONNECT_INTERVAL	1
+uint64_t connect_interval = DEFAULT_CONNECT_INTERVAL;
+uint64_t last_connect_timestamp = 0;
+
+uint64_t current_timestamp(void )
+{
+  struct timeval tv;
+
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
+}
+
 static int wt_callback_init(struct wt_callback *cb) {
   int status;
   cdtime_t now;
@@ -207,6 +223,14 @@ static int wt_callback_init(struct wt_callback *cb) {
         .ai_socktype = SOCK_STREAM,
     };
 
+    if (current_timestamp() <
+        last_connect_timestamp + connect_interval * 1000000)
+      return -EAGAIN;
+
+    last_connect_timestamp = current_timestamp();
+    connect_interval = connect_interval >= MAX_CONNECT_INTERVAL ?
+		       MAX_CONNECT_INTERVAL : (connect_interval * 2);
+
     status = getaddrinfo(node, service, &ai_hints, &cb->ai);
     if (status != 0) {
       if (cb->ai) {
@@ -252,7 +276,7 @@ static int wt_callback_init(struct wt_callback *cb) {
     cb->connect_failed_log_enabled = 1;
   }
   cb->connect_dns_failed_attempts_remaining = 1;
-
+  connect_interval = DEFAULT_CONNECT_INTERVAL;
   wt_reset_buffer(cb);
 
   return 0;
@@ -299,9 +323,10 @@ static int wt_flush(cdtime_t timeout,
   if (cb->sock_fd < 0) {
     status = wt_callback_init(cb);
     if (status != 0) {
-      ERROR("write_tsdb plugin: wt_callback_init failed.");
+      if (status != -EAGAIN)
+        ERROR("write_tsdb plugin: wt_callback_init failed.");
       pthread_mutex_unlock(&cb->send_lock);
-      return -1;
+      return status;
     }
   }
 
@@ -487,9 +512,10 @@ static int wt_send_message(const char *key, const char *value, cdtime_t time,
   if (cb->sock_fd < 0) {
     status = wt_callback_init(cb);
     if (status != 0) {
-      ERROR("write_tsdb plugin: wt_callback_init failed.");
+      if (status != -EAGAIN)
+        ERROR("write_tsdb plugin: wt_callback_init failed.");
       pthread_mutex_unlock(&cb->send_lock);
-      return -1;
+      return status;
     }
   }
 
@@ -560,8 +586,9 @@ static int wt_write_messages(const data_set_t *ds, const value_list_t *vl,
     /* Send the message to tsdb */
     status = wt_send_message(key, values, vl->time, cb, vl->host, vl->meta);
     if (status != 0) {
-      ERROR("write_tsdb plugin: error with "
-            "wt_send_message");
+      if (status != -EAGAIN)
+        ERROR("write_tsdb plugin: error with "
+              "wt_send_message");
       return status;
     }
   }
