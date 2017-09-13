@@ -6169,6 +6169,7 @@ plugin_protocols="no"
 plugin_python="no"
 plugin_serial="no"
 plugin_smart="no"
+plugin_stress="no"
 plugin_swap="no"
 plugin_tape="no"
 plugin_tcpconns="no"
@@ -6213,6 +6214,7 @@ if test "x$ac_system" = "xLinux"; then
   plugin_processes="yes"
   plugin_protocols="yes"
   plugin_serial="yes"
+  plugin_stress="yes"
   plugin_swap="yes"
   plugin_tcpconns="yes"
   plugin_thermal="yes"
@@ -6633,6 +6635,7 @@ AC_PLUGIN([snmp_agent],          [$with_libnetsnmpagent],   [SNMP agent plugin])
 AC_PLUGIN([statsd],              [yes],                     [StatsD plugin])
 AC_PLUGIN([swap],                [$plugin_swap],            [Swap usage statistics])
 AC_PLUGIN([syslog],              [$have_syslog],            [Syslog logging plugin])
+AC_PLUGIN([stress],              [$plugin_stress],          [Stress test])
 AC_PLUGIN([table],               [yes],                     [Parsing of tabular data])
 AC_PLUGIN([tail],                [yes],                     [Parsing of logfiles])
 AC_PLUGIN([tail_csv],            [yes],                     [Parsing of CSV files])
@@ -7050,6 +7053,7 @@ AC_MSG_RESULT([    smart . . . . . . . . $enable_smart])
 AC_MSG_RESULT([    snmp  . . . . . . . . $enable_snmp])
 AC_MSG_RESULT([    snmp_agent  . . . . . $enable_snmp_agent])
 AC_MSG_RESULT([    statsd  . . . . . . . $enable_statsd])
+AC_MSG_RESULT([    stress  . . . . . . . $enable_stress])
 AC_MSG_RESULT([    swap  . . . . . . . . $enable_swap])
 AC_MSG_RESULT([    syslog  . . . . . . . $enable_syslog])
 AC_MSG_RESULT([    table . . . . . . . . $enable_table])
