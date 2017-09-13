@@ -365,7 +365,7 @@ static int wt_format_values(char *ret, size_t ret_len, int ds_num,
   if (ds->ds[ds_num].type == DS_TYPE_GAUGE)
     BUFFER_ADD(GAUGE_FORMAT, vl->values[ds_num].gauge);
   else if (store_rates ||
-           (derive_rate && ds->ds[ds_num].type == DS_TYPE_DERIVE)
+           (derive_rate && ds->ds[ds_num].type == DS_TYPE_DERIVE)) {
     if (rates == NULL)
       rates = uc_get_rate(ds, vl);
     if (rates == NULL) {
