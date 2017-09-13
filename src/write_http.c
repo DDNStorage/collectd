@@ -61,6 +61,7 @@ struct wh_callback_s {
   long sslversion;
   bool store_rates;
   bool log_http_error;
+  bool sync_send;
   int low_speed_limit;
   time_t low_speed_time;
   int timeout;
@@ -461,6 +462,13 @@ static int wh_write_json(const data_set_t *ds, const value_list_t *vl, /* {{{ */
     status =
         format_json_value_list(cb->send_buffer, &cb->send_buffer_fill,
                                &cb->send_buffer_free, ds, vl, cb->store_rates);
+  } else if (cb->sync_send) {
+    status = wh_flush_nolock (/* timeout = */ 0, cb);
+    if (status != 0) {
+      wh_reset_buffer (cb);
+      pthread_mutex_unlock (&cb->send_lock);
+      return (status);
+    }
   }
   if (status != 0) {
     pthread_mutex_unlock(&cb->send_lock);
@@ -650,6 +658,7 @@ static int wh_config_node(oconfig_item_t *ci) /* {{{ */
   cb->send_metrics = true;
   cb->send_notifications = false;
   cb->data_ttl = 0;
+  cb->sync_send = 0;
   cb->metrics_prefix = strdup(WRITE_HTTP_DEFAULT_PREFIX);
   cb->curl_stats = NULL;
 
@@ -744,6 +753,8 @@ static int wh_config_node(oconfig_item_t *ci) /* {{{ */
       status = cf_util_get_boolean(child, &cb->log_http_error);
     else if (strcasecmp("Header", child->key) == 0)
       status = wh_config_append_string("Header", &cb->headers, child);
+    else if (strcasecmp("SyncSend", child->key) == 0)
+      status = cf_util_get_boolean(child, &cb->sync_send);
     else if (strcasecmp("Attribute", child->key) == 0) {
       char *key = NULL;
       char *val = NULL;
