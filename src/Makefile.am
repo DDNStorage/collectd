@@ -858,6 +858,18 @@ ime_la_LDFLAGS = -module -avoid-version
 ime_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
 endif
 
+if BUILD_PLUGIN_FILEDATA
+pkglib_LTLIBRARIES += filedata.la
+filedata_la_SOURCES = filedata.c \
+		    lustre_read.c lustre_read.h \
+		    lustre_common.h list.h \
+		    lustre_xml.c lustre_xml.h \
+		    lustre_config.c lustre_config.h
+filedata_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBXML2_CFLAGS)
+filedata_la_LDFLAGS = -module -avoid-version
+filedata_la_LIBADD = $(BUILD_WITH_LIBXML2_LIBS)
+endif
+
 if BUILD_PLUGIN_NGINX
 pkglib_LTLIBRARIES += nginx.la
 nginx_la_SOURCES = nginx.c

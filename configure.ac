@@ -6683,6 +6683,7 @@ plugin_dpdk_telemetry="no"
 plugin_entropy="no"
 plugin_ethstat="no"
 plugin_fhcount="no"
+plugin_filedata="no"
 plugin_fscache="no"
 plugin_gps="no"
 plugin_gpu_nvidia="no"
@@ -6811,6 +6812,7 @@ if test "x$ac_system" = "xLinux"; then
     plugin_gpfs="yes"
     plugin_lustre="yes"
     plugin_ime="yes"
+    plugin_filedata="yes"
   fi
 
   if test "x$with_libxml2" = "xyes" && test "x$with_libssh2" = "xyes" && test "x$with_libzmq" = "xyes"; then
@@ -7155,6 +7157,7 @@ AC_PLUGIN([ethstat],             [$plugin_ethstat],           [Stats from NIC dr
 AC_PLUGIN([exec],                [yes],                       [Execution of external programs])
 AC_PLUGIN([fhcount],             [$plugin_fhcount],           [File handles statistics])
 AC_PLUGIN([filecount],           [yes],                       [Count files in directories])
+AC_PLUGIN([filedata],            [$plugin_filedata],          [file data statistics])
 AC_PLUGIN([fscache],             [$plugin_fscache],           [fscache statistics])
 AC_PLUGIN([gmond],               [$with_libganglia],          [Ganglia plugin])
 AC_PLUGIN([ganglia],             [$with_libganglia],          [Ganglia plugin to send data to gmond])
@@ -7606,6 +7609,7 @@ AC_MSG_RESULT([    ethstat . . . . . . . $enable_ethstat])
 AC_MSG_RESULT([    exec  . . . . . . . . $enable_exec])
 AC_MSG_RESULT([    fhcount . . . . . . . $enable_fhcount])
 AC_MSG_RESULT([    filecount . . . . . . $enable_filecount])
+AC_MSG_RESULT([    filedata  . . . . . . $enable_filedata])
 AC_MSG_RESULT([    fscache . . . . . . . $enable_fscache])
 AC_MSG_RESULT([    gmond . . . . . . . . $enable_gmond])
 AC_MSG_RESULT([    ganglia . . . . . . . $enable_ganglia])
