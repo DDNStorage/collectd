@@ -6343,6 +6343,7 @@ if test "x$ac_system" = "xLinux"; then
   if test "x$with_libxml2" = "xyes"; then
     plugin_gpfs="yes"
     plugin_lustre="yes"
+    plugin_ime="yes"
   fi
 
   if test "x$with_libxml2" = "xyes" && test "x$with_libssh2" = "xyes" && test "x$with_libzmq" = "xyes"; then
@@ -6666,6 +6667,7 @@ AC_PLUGIN([gps],                 [$plugin_gps],             [GPS plugin])
 AC_PLUGIN([grpc],                [$plugin_grpc],            [gRPC plugin])
 AC_PLUGIN([hddtemp],             [yes],                     [Query hddtempd])
 AC_PLUGIN([hugepages],           [$plugin_hugepages],       [Hugepages statistics])
+AC_PLUGIN([ime],                 [$plugin_ime],             [DDN IME statistics])
 AC_PLUGIN([intel_pmu],           [$with_libjevents],        [Intel performance monitor plugin])
 AC_PLUGIN([intel_rdt],           [$with_libpqos],           [Intel RDT monitor plugin])
 AC_PLUGIN([interface],           [$plugin_interface],       [Interface traffic statistics])
@@ -7090,6 +7092,7 @@ AC_MSG_RESULT([    gps . . . . . . . . . $enable_gps])
 AC_MSG_RESULT([    grpc  . . . . . . . . $enable_grpc])
 AC_MSG_RESULT([    hddtemp . . . . . . . $enable_hddtemp])
 AC_MSG_RESULT([    hugepages . . . . . . $enable_hugepages])
+AC_MSG_RESULT([    ime . . . . . . . . . $enable_ime])
 AC_MSG_RESULT([    intel_pmu . . . . . . $enable_intel_pmu])
 AC_MSG_RESULT([    intel_rdt . . . . . . $enable_intel_rdt])
 AC_MSG_RESULT([    interface . . . . . . $enable_interface])
