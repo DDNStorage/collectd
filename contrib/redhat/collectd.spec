@@ -173,6 +173,14 @@
 %define with_zfs_arc 0%{!?_without_zfs_arc:1}
 %define with_zookeeper 0%{!?_without_zookeeper:1}
 
+# DDN plugins
+%define with_ganglia 0%{!?_without_ganglia:1}
+%define with_gpfs 0%{!?_without_gpfs:1}
+%define with_lustre 0%{!?_without_lustre:1}
+%define with_ssh 0%{!?_without_ssh:1}
+%define with_stress 0%{!?_without_stress:1}
+%define with_zabbix 0%{!?_without_zabbix:1}
+
 # Plugins not built by default because of dependencies on libraries not
 # available in RHEL or EPEL:
 
@@ -1090,6 +1098,63 @@ Requires:	libcollectdclient%{?_isa} = %{version}-%{release}
 Requires:	collectd%{?_isa} = %{version}-%{release}
 %description -n collectd-utils
 Collectd utilities
+
+# DDN plugins
+%if %{with_ganglia}
+%package ganglia
+Summary:	Ganglia plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+BuildRequires:	ganglia-devel
+%description ganglia
+The ganglia plugin send udp data to gmond,
+the client daemon of the Ganglia project.
+%endif
+
+%if %{with_gpfs}
+%package gpfs
+Summary:	GPFS plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description gpfs
+GPFS plugin for collectd.
+%endif
+
+%if %{with_lustre}
+%package lustre
+Summary:	Lustre plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description lustre
+Lustre plugin for collectd.
+%endif
+
+%if %{with_ssh}
+%package ssh
+Summary:	ssh plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description ssh
+The ssh plugin send key and value to ssh server
+%endif
+
+%if %{with_stress}
+%package stress
+Summary:	Stress plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description stress
+Stress plugin, used to stress test for collectd
+%endif
+
+%if %{with_zabbix}
+%package zabbix
+Summary:	Zabbix plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description zabbix
+The zabbix plugin send key and value to zabbix server
+%endif
 
 %prep
 %setup -q
@@ -2049,6 +2114,43 @@ Collectd utilities
 %define _with_zookeeper --disable-zookeeper
 %endif
 
+# DDN Plugins
+%if %{with_ganglia}
+%define _with_ganglia --enable-ganglia
+%else
+%define _with_ganglia --disable-ganglia
+%endif
+
+%if %{with_gpfs}
+%define _with_gpfs --enable-gpfs
+%else
+%define _with_gpfs --disable-gpfs
+%endif
+
+%if %{with_lustre}
+%define _with_lustre --enable-lustre
+%else
+%define _with_lustre --disable-lustre
+%endif
+
+%if %{with_ssh}
+%define _with_ssh --enable-ssh
+%else
+%define _with_ssh --disable-ssh
+%endif
+
+%if %{with_stress}
+%define _with_stress --enable-stress
+%else
+%define _with_stress --disable-stress
+%endif
+
+%if %{with_zabbix}
+%define _with_zabbix --enable-zabbix
+%else
+%define _with_zabbix --disable-zabbix
+%endif
+
 %if %{with debug}
 %define _feature_debug --enable-debug
 %else
@@ -2230,6 +2332,12 @@ Collectd utilities
 	%{?_with_zfs_arc} \
 	%{?_with_zone} \
 	%{?_with_zookeeper}
+	%{?_with_ganglia} \
+	%{?_with_gpfs} \
+	%{?_with_lustre} \
+	%{?_with_ssh} \
+	%{?_with_stress} \
+	%{?_with_zabbix}
 
 
 %{__make} %{?_smp_mflags}
@@ -2246,6 +2354,7 @@ rm -rf %{buildroot}
 %{__install} -Dp -m0644 src/collectd.conf %{buildroot}%{_sysconfdir}/collectd.conf
 %{__install} -d %{buildroot}%{_sharedstatedir}/collectd/
 %{__install} -d %{buildroot}%{_sysconfdir}/collectd.d/
+%{__install} -Dp -m0644 contrib/ddn/collectd.conf.lustre %{buildroot}%{_sysconfdir}/collectd.conf.lustre
 
 %{__mkdir} -p %{buildroot}%{_localstatedir}/www
 %{__mkdir} -p %{buildroot}/%{_sysconfdir}/httpd/conf.d
@@ -2332,6 +2441,7 @@ fi
 
 %files
 %doc AUTHORS COPYING ChangeLog README
+%{_sysconfdir}/collectd.conf.lustre
 %config(noreplace) %{_sysconfdir}/collectd.conf
 %if 0%{?fedora} || 0%{?rhel} >= 7
 %{_unitdir}/collectd.service
@@ -2980,6 +3090,38 @@ fi
 
 %files contrib
 %doc contrib/
+
+# DDN plugins
+%if %{with_ganglia}
+%files ganglia
+%{_libdir}/%{name}/ganglia.so
+%endif
+
+%if %{with_gpfs}
+%files gpfs
+%{_libdir}/%{name}/gpfs.so
+%endif
+
+%if %{with_lustre}
+%files lustre
+%{_bindir}/collectd-lustre
+%{_libdir}/%{name}/lustre.so
+%endif
+
+%if %{with_ssh}
+%files ssh
+%{_libdir}/%{name}/ssh.so
+%endif
+
+%if %{with_stress}
+%files stress
+%{_libdir}/%{name}/stress.so
+%endif
+
+%if %{with_zabbix}
+%files zabbix
+%{_libdir}/%{name}/zabbix.so
+%endif
 
 %changelog
 * Mon Mar 16 2020 Matthias Runge <mrunge@redhat.com> - 5.11.0-1
