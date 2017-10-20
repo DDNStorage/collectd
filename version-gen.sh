@@ -10,4 +10,4 @@ if test -z "$VERSION"; then
 	VERSION="$DEFAULT_VERSION"
 fi
 
-printf "%s" "$VERSION${rev}.ddn"
+printf "%s" "$VERSION"
