@@ -836,6 +836,7 @@ static int filedata_parse_context(struct filedata_item_type *type,
 		finish = fields[0].rm_eo + (previous - content);
 		strncpy(buf,
 			content + start, finish - start);
+		buf[finish - start] = '\0';
 
 		status = _filedata_parse(type, buf, path_head);
 		if (status)
