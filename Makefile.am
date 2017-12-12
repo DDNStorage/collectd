@@ -2384,6 +2384,13 @@ stress_la_LDFLAGS = -module -avoid-version
 stress_la_LIBADD = -lpthread
 endif
 
+if BUILD_PLUGIN_STRESS2
+pkglib_LTLIBRARIES += stress2.la
+stress2_la_SOURCES = src/stress2.c
+stress2_la_LDFLAGS = -module -avoid-version
+stress2_la_LIBADD = -lpthread
+endif
+
 if BUILD_PLUGIN_ZABBIX
 pkglib_LTLIBRARIES += zabbix.la
 zabbix_la_SOURCES = src/zabbix.c \

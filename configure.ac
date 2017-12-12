@@ -6717,6 +6717,7 @@ plugin_serial="no"
 plugin_smart="no"
 plugin_ssh="no"
 plugin_stress="no"
+plugin_stress2="no"
 plugin_swap="no"
 plugin_synproxy="no"
 plugin_sysevent="no"
@@ -6766,6 +6767,7 @@ if test "x$ac_system" = "xLinux"; then
   plugin_protocols="yes"
   plugin_serial="yes"
   plugin_stress="yes"
+  plugin_stress2="yes"
   plugin_swap="yes"
   plugin_synproxy="yes"
   plugin_tcpconns="yes"
@@ -7247,7 +7249,8 @@ AC_PLUGIN([swap],                [$plugin_swap],              [Swap usage statis
 AC_PLUGIN([synproxy],            [$plugin_synproxy],          [Synproxy stats plugin])
 AC_PLUGIN([sysevent],            [$plugin_sysevent],          [rsyslog events])
 AC_PLUGIN([syslog],              [$have_syslog],              [Syslog logging plugin])
-AC_PLUGIN([stress],              [$plugin_stress],          [Stress test])
+AC_PLUGIN([stress],              [$plugin_stress],            [Stress test])
+AC_PLUGIN([stress2],             [$plugin_stress2],           [Stress test V2])
 AC_PLUGIN([table],               [yes],                       [Parsing of tabular data])
 AC_PLUGIN([tail],                [yes],                       [Parsing of logfiles])
 AC_PLUGIN([tail_csv],            [yes],                       [Parsing of CSV files])
@@ -7694,6 +7697,7 @@ AC_MSG_RESULT([    snmp_agent  . . . . . $enable_snmp_agent])
 AC_MSG_RESULT([    ssh . . . . . . . . . $enable_ssh])
 AC_MSG_RESULT([    statsd  . . . . . . . $enable_statsd])
 AC_MSG_RESULT([    stress  . . . . . . . $enable_stress])
+AC_MSG_RESULT([    stress2 . . . . . . . $enable_stress2])
 AC_MSG_RESULT([    swap  . . . . . . . . $enable_swap])
 AC_MSG_RESULT([    synproxy  . . . . . . $enable_synproxy])
 AC_MSG_RESULT([    sysevent. . . . . . . $enable_sysevent])
