@@ -169,6 +169,7 @@
 %define with_ime 0%{!?_without_ime:1}
 %define with_ssh 0%{!?_without_ssh:1}
 %define with_stress 0%{!?_without_stress:1}
+%define with_stress2 0%{!?_without_stress2:1}
 %define with_zabbix 0%{!?_without_zabbix:1}
 
 # Plugins not built by default because of dependencies on libraries not
@@ -1063,6 +1064,15 @@ Group:		System Environment/Daemons
 Requires:	%{name}%{?_isa} = %{version}-%{release}
 %description stress
 Stress plugin, used to stress test for collectd
+%endif
+
+%if %{with_stress2}
+%package stress2
+Summary:	Stress2 plugin for collectd
+Group:		System Environment/Daemons
+Requires:	%{name}%{?_isa} = %{version}-%{release}
+%description stress2
+Stress plugin V2, used to stress test for collectd
 %endif
 
 %if %{with_zabbix}
@@ -1984,6 +1994,12 @@ The zabbix plugin send key and value to zabbix server
 %define _with_stress --disable-stress
 %endif
 
+%if %{with_stress2}
+%define _with_stress2 --enable-stress2
+%else
+%define _with_stress2 --disable-stress2
+%endif
+
 %if %{with_zabbix}
 %define _with_zabbix --enable-zabbix
 %else
@@ -2155,6 +2171,7 @@ The zabbix plugin send key and value to zabbix server
 	%{?_with_ime} \
 	%{?_with_ssh} \
 	%{?_with_stress} \
+	%{?_with_stress2} \
 	%{?_with_zabbix}
 
 
@@ -2893,6 +2910,11 @@ fi
 %if %{with_stress}
 %files stress
 %{_libdir}/%{name}/stress.so
+%endif
+
+%if %{with_stress2}
+%files stress2
+%{_libdir}/%{name}/stress2.so
 %endif
 
 %if %{with_zabbix}

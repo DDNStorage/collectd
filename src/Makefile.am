@@ -1110,6 +1110,15 @@ collectd_LDADD += stress.la
 collectd_DEPENDENCIES += stress.la
 endif
 
+if BUILD_PLUGIN_STRESS2
+pkglib_LTLIBRARIES += stress2.la
+stress2_la_SOURCES = stress2.c
+stress2_la_LDFLAGS = -module -avoid-version
+stress2_la_LIBADD = -lpthread
+collectd_LDADD += stress2.la
+collectd_DEPENDENCIES += stress2.la
+endif
+
 if BUILD_PLUGIN_SWAP
 pkglib_LTLIBRARIES += swap.la
 swap_la_SOURCES = swap.c
