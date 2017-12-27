@@ -59,8 +59,8 @@ struct stress_thread_data {
 	pthread_t		 std_thread;
 	pthread_attr_t		 std_attr;
 	int			 std_thread_id;
-	int			 std_variable_number;
-	struct stress_variable	*std_variables;
+
+	struct stress_metric	*std_stress_metrics;
 };
 
 struct stress_timer {
@@ -73,22 +73,30 @@ struct stress_timer {
 	struct timeval st_stopSysTime;
 };
 
+struct stress_metric {
+	struct stress_variable		*sm_variables;
+	int				 sm_variable_number;
+	int				 sm_commit_number;
+	struct list_head		 sm_variable_types;
+	char				 sm_options[STRESS_OPTION_MAX][STRESS_MAX_NAME];
+	char				 sm_tsdb_name[STRESS_MAX_NAME];
+	char				 sm_tsdb_tags[STRESS_MAX_NAME];
+	/* How many times this plugin has been readed*/
+	int				 sm_read_number;
+	struct list_head		 sm_metric_linkage;
+	regex_t				 sm_regex;
+};
+
 struct stress_environment {
+	/* thread information */
 	int				 se_thread_number;
 	struct stress_thread_data	*se_thread_datas;
 	struct stress_timer		 se_timer;
-	int				 se_commit_number;
-	int				 se_variable_number;
-	struct list_head		 se_variable_types;
-	char				 se_options[STRESS_OPTION_MAX][STRESS_MAX_NAME];
-	char				 se_tsdb_name[STRESS_MAX_NAME];
-	char				 se_tsdb_tags[STRESS_MAX_NAME];
-	regex_t				 se_regex;
-	/* How many times this plugin has been readed*/
-	int				 se_read_number;
-};
 
-struct stress_environment *stress_environment_g = NULL;
+	/* Metric information */
+	int				se_metric_number;
+	struct list_head		se_metric_head;
+} stress_environment_g;
 
 void stress_timer_init(struct stress_timer *t)
 {
@@ -100,12 +108,12 @@ void stress_timer_start(struct stress_timer *t)
 	struct rusage ru;
 
 	if (gettimeofday(&(t->st_startRealTime), NULL)) {
-		ERROR("Error in gettimeofday");
+		ERROR("stress2: error in gettimeofday");
 		exit(10);
 	}
 
 	if (getrusage(RUSAGE_SELF, &ru)) {
-		ERROR("Error in getrusage");
+		ERROR("stress2: error in getrusage");
 		exit(11);
 	}
 
@@ -119,13 +127,13 @@ void stress_timer_stop(struct stress_timer *t)
 
 	if(gettimeofday( &(t->st_stopRealTime), NULL ))
 	{
-		ERROR("Error in gettimeofday");
+		ERROR("stress2: error in gettimeofday");
 		exit(10);
 	}
 
 	if( getrusage( RUSAGE_SELF, &ru ))
 	{
-		ERROR("Error in getrusage");
+		ERROR("stress2: error in getrusage");
 		exit(11);
 	}
 
@@ -186,7 +194,7 @@ static void stress_instance_submit(const char *host,
 	vl.meta = meta_data_create();
 	vl.interval = interval;
 	if (vl.meta == NULL) {
-		ERROR("Submit: meta_data_create failed");
+		ERROR("stress2: submit meta_data_create failed");
 		return;
 	}
 
@@ -199,12 +207,12 @@ static void stress_instance_submit(const char *host,
 	sstrncpy (vl.type_instance, type_instance, sizeof (vl.type_instance));
 	status = meta_data_add_string(vl.meta, "tsdb_name", tsdb_name);
 	if (status != 0) {
-		ERROR("Submit: meta_data_add_string failed");
+		ERROR("stress2: submit meta_data_add_string failed");
 		goto out;
 	}
 	status = meta_data_add_string(vl.meta, "tsdb_tags", tsdb_tags);
 	if (status != 0) {
-		ERROR("Submit: meta_data_add_string failed");
+		ERROR("stress2: submit meta_data_add_string failed");
 		goto out;
 	}
 #if 0
@@ -258,7 +266,7 @@ static int stress_key_field_get(char *field, size_t size, const char *name)
 {
 	if (strcmp(name, "hostname") == 0) {
 		if (strlen(hostname_g) >= size) {
-			ERROR("stress plugin: hostname `%s' is too long",
+			ERROR("stress2: hostname `%s' is too long",
 			      hostname_g);
 			return -1;
 		} else {
@@ -271,12 +279,12 @@ static int stress_key_field_get(char *field, size_t size, const char *name)
 
 static int stress_variable_field_get(char *field, size_t size, const char *name,
 				     const char *print_string,
-				     struct stress_thread_data *thread_data)
+				     struct stress_metric *sm)
 {
 	char variable_value[STRESS_MAX_NAME];
 	struct stress_variable_type *type;
 	struct stress_variable *variable;
-	int read_number = stress_environment_g->se_read_number;
+	int read_number = sm->sm_read_number;
 	int value;
 	int i;
 
@@ -284,15 +292,15 @@ static int stress_variable_field_get(char *field, size_t size, const char *name,
 		if (strlen(hostname_g) >= size) {
 			strncpy(field, hostname_g, size - 1);
 			field[size - 1] = '\0';
-			WARNING("hostname: %s is too long, "
+			WARNING("stress2: hostname: %s is too long, "
 				"truncate it to: \"%s\"", hostname_g, field);
 		} else {
 			strncpy(field, hostname_g, size - 1);
 		}
 	}
 
-	for (i = 0; i < thread_data->std_variable_number; i++) {
-		variable = &thread_data->std_variables[i];
+	for (i = 0; i < sm->sm_variable_number; i++) {
+		variable = &sm->sm_variables[i];
 		type = variable->sv_type;
 		if (strcmp(type->svt_name, name) == 0) {
 			value = variable->sv_value_current;
@@ -302,7 +310,7 @@ static int stress_variable_field_get(char *field, size_t size, const char *name,
 			snprintf(variable_value, STRESS_MAX_NAME, print_string,
 				 value);
 			if (strlen(variable_value) >= size) {
-				ERROR("stress plugin: variable is too long");
+				ERROR("stress2: variable is too long");
 				return -1;
 			} else {
 				strncpy(field, variable_value, size - 1);
@@ -328,7 +336,7 @@ static int stress_compile_regex(regex_t *preg, const char *regex)
 static int stress_string_translate(const char *origin_string,
 				   char *value,
 				   int size,
-				   struct stress_thread_data *thread_data)
+				   struct stress_metric *sm)
 {
 	int status = 0;
 	regmatch_t matched_fields[3];
@@ -344,7 +352,7 @@ static int stress_string_translate(const char *origin_string,
 	int i;
 
 	while (pointer < origin_string + strlen(origin_string)) {
-		status = regexec(&stress_environment_g->se_regex,
+		status = regexec(&sm->sm_regex,
 				 pointer,
 				 3,
 				 matched_fields, 0);
@@ -372,7 +380,7 @@ static int stress_string_translate(const char *origin_string,
 
 			if ((i != 0) && ((finish - start) > VARIABLE_NAME_LEN)) {
 				status = -EINVAL;
-				ERROR("%s length: %d is too long",
+				ERROR("stress2: %s length: %d is too long",
 				       (i == 1) ? "type" : "name",
 				       finish - start);
 				goto out;
@@ -394,7 +402,7 @@ static int stress_string_translate(const char *origin_string,
 						      sizeof(field_value),
 						      name);
 			if (status) {
-				ERROR("failed to get field of key \"%s\"",
+				ERROR("stress2: failed to get field of key \"%s\"",
 				      name);
 				status = -EINVAL;
 				goto out;
@@ -403,13 +411,13 @@ static int stress_string_translate(const char *origin_string,
 		} else if (strcmp(type, "variable") == 0) {
 			separator = strstr(name, ":");
 			if (separator == NULL) {
-				ERROR("stress plugin: failed to parse variable with name \"%s\"",
+				ERROR("stress2: failed to parse variable with name \"%s\"",
 				      name);
 				status = -EINVAL;
 				goto out;
 			}
 			if (strlen(separator) <= 1) {
-				ERROR("stress plugin: no print format is given in \"%s\"",
+				ERROR("stress2: no print format is given in \"%s\"",
 				      name);
 				status = -EINVAL;
 				goto out;
@@ -420,22 +428,21 @@ static int stress_string_translate(const char *origin_string,
 			status = stress_variable_field_get(field_value,
 						           sizeof(field_value),
 						           name,
-						           print_string,
-						           thread_data);
+							   print_string, sm);
 			if (status) {
-				ERROR("failed to get field of key \"%s\"",
+				ERROR("stress2: failed to get field of key \"%s\"",
 				      name);
 				goto out;
 			}
 			match_value = field_value;
 		} else {
-			ERROR("stress plugin: unknown type to translate \"%s\"", type);
+			ERROR("stress2: unknown type to translate \"%s\"", type);
 			status = -EINVAL;
 			goto out;
 		}
 
 		if (strlen(match_value) + matched_fields[0].rm_so > max_size) {
-			ERROR("stress plugin: value overflows: size: %d", size);
+			ERROR("stress2: value overflows: size: %d", size);
 			status = -EINVAL;
 			goto out;
 		}
@@ -466,7 +473,8 @@ static int stress_random_value(int max)
 	return random() % max;
 }
 
-void *stress_proc(void *data)
+void *stress_proc_metric(int std_thread_id,
+			 struct stress_metric *stress_metric)
 {
 	char option_values[STRESS_OPTION_MAX][STRESS_MAX_NAME];
 	char *option;
@@ -474,7 +482,6 @@ void *stress_proc(void *data)
 	char tsdb_tags[MAX_TSDB_TAGS_LENGTH];
 	int i;
 	derive_t value = 0;
-	struct stress_thread_data *thread_data;
 	struct stress_variable *variable;
 	int not_finished = 1;
 	int ret;
@@ -482,47 +489,46 @@ void *stress_proc(void *data)
 	int number = 0;
 	int thread_index;
 
-	thread_data = (struct stress_thread_data *)data;
-	for (i = 0; i < thread_data->std_variable_number; i++) {
-		variable = &(thread_data->std_variables[i]);
+	for (i = 0; i < stress_metric->sm_variable_number; i++) {
+		variable = &(stress_metric->sm_variables[i]);
 		variable->sv_value_current = 0;
 	}
 
 	while (not_finished) {
-		thread_index = number % stress_environment_g->se_thread_number;
+		thread_index = number % stress_environment_g.se_thread_number;
 		number++;
 
-		if (thread_index == thread_data->std_thread_id) {
+		if (thread_index == std_thread_id) {
 			for (i = 0; i < STRESS_OPTION_MAX; i++) {
-				option = stress_environment_g->se_options[i];
+				option = stress_metric->sm_options[i];
 				ret = stress_string_translate(option, option_values[i],
 							      STRESS_MAX_NAME,
-							      thread_data);
+							      stress_metric);
 				if (ret) {
-					ERROR("stress plugin: failed to get option value [%d], aborting",
+					ERROR("stress2: failed to get option value [%d], aborting",
 					      i);
 					break;
 				}
 			}
-	
-			option = stress_environment_g->se_tsdb_tags;
+
+			option = stress_metric->sm_tsdb_tags;
 			ret = stress_string_translate(option, tsdb_tags,
 						      STRESS_MAX_NAME,
-						      thread_data);
+						      stress_metric);
 			if (ret) {
-				ERROR("stress plugin: failed to get tsdb_tags value, aborting");
+				ERROR("stress2: failed to get tsdb_tags value, aborting");
 				break;
 			}
-	
-			option = stress_environment_g->se_tsdb_name;
+
+			option = stress_metric->sm_tsdb_name;
 			ret = stress_string_translate(option, tsdb_name,
 						      STRESS_MAX_NAME,
-						      thread_data);
+						      stress_metric);
 			if (ret) {
-				ERROR("stress plugin: failed to get tsdb_name value, aborting");
+				ERROR("stress2: failed to get tsdb_name value, aborting");
 				break;
 			}
-	
+
 			stress_instance_submit(option_values[0], option_values[1],
 					       option_values[2], option_values[3],
 					       option_values[4], tsdb_name, tsdb_tags, value,
@@ -531,17 +537,31 @@ void *stress_proc(void *data)
 			value += stress_random_value(1024);
 		}
 
-		for (i = 0; i < thread_data->std_variable_number; i++) {
-			variable = &(thread_data->std_variables[i]);
-			if (variable->sv_value_current + 1 < variable->sv_type->svt_value_number) {
+		for (i = 0; i < stress_metric->sm_variable_number; i++) {
+			variable = &(stress_metric->sm_variables[i]);
+			if (variable->sv_value_current + 1 <
+			    variable->sv_type->svt_value_number) {
 				variable->sv_value_current++;
 				break;
 			}
 			variable->sv_value_current = 0;
 			/* Carry over to next variable */
 		}
-		if (i == thread_data->std_variable_number)
+		if (i == stress_metric->sm_variable_number)
 			not_finished = 0;
+	}
+	return 0;
+}
+
+void *stress_proc(void *data)
+{
+	struct stress_thread_data *thread_data;
+	int i;
+
+	thread_data = (struct stress_thread_data *)data;
+	for (i = 0; i < stress_environment_g.se_metric_number; i++) {
+		stress_proc_metric(thread_data->std_thread_id,
+				   &thread_data->std_stress_metrics[i]);
 	}
 	return 0;
 }
@@ -551,78 +571,107 @@ static void stress_complete()
 	struct stress_thread_data *data;
 	int i;
 
-	for (i = 0 ; i < stress_environment_g->se_thread_number; i++) {
-		data = &stress_environment_g->se_thread_datas[i];
+	for (i = 0 ; i < stress_environment_g.se_thread_number; i++) {
+		data = &stress_environment_g.se_thread_datas[i];
 		pthread_join(data->std_thread, NULL);
 	}
 }
 
 static int stress_read(void)
 {
+	struct stress_metric *stress_metric;
 	struct stress_thread_data *data;
 	int status;
 	int i;
 	double realtime;
+	int se_commit_number = 0;
 
-	if (stress_environment_g == NULL) {
-		ERROR("stress plugin is not configured properly");
-		return -1;
-	}
+	if (list_empty(&stress_environment_g.se_metric_head))
+		return -EINVAL;
 
-	for (i = 0 ; i < stress_environment_g->se_thread_number; i++) {
-		data = &stress_environment_g->se_thread_datas[i];
+	for (i = 0 ; i < stress_environment_g.se_thread_number; i++) {
+		data = &stress_environment_g.se_thread_datas[i];
 		status = pthread_create(&data->std_thread,
 					&data->std_attr,
 					stress_proc,
 					data);
 		if (status) {
-			ERROR("Error creating threads");
-			return -1;
+			ERROR("stress2: error creating threads");
+			return status;
 		}
 	}
-	stress_timer_start(&stress_environment_g->se_timer);
+
+	stress_timer_start(&stress_environment_g.se_timer);
 	stress_complete();
-	stress_timer_stop(&stress_environment_g->se_timer);
-	realtime = stress_timer_realtime(&stress_environment_g->se_timer);
-	ERROR("time: %.5f for %d commits with %d threads, %.5f commits/second",
-	      realtime,
-	      stress_environment_g->se_commit_number,
-	      stress_environment_g->se_thread_number,
-	      stress_environment_g->se_commit_number / realtime);
-	stress_environment_g->se_read_number++;
+	stress_timer_stop(&stress_environment_g.se_timer);
+	realtime = stress_timer_realtime(&stress_environment_g.se_timer);
+
+	list_for_each_entry(stress_metric, &stress_environment_g.se_metric_head,
+			    sm_metric_linkage) {
+		se_commit_number += stress_metric->sm_commit_number,
+		stress_metric->sm_read_number++;
+	}
+
+	ERROR("stress2: time: %.5f for %d commits with %d threads, %.5f commits/second",
+	      realtime, se_commit_number, stress_environment_g.se_thread_number,
+	      se_commit_number / realtime);
+
 	return 0;
 }
 
 
-void stress_fini()
+void stress_environment_fini(void)
 {
-	if (stress_environment_g == NULL)
+	struct stress_metric *stress_metric, *tmp;
+	struct stress_variable_type *variable_type;
+	struct stress_variable_type *n;
+	struct stress_thread_data *thread_data;
+	int i;
+
+	list_for_each_entry_safe(stress_metric, tmp,
+				 &stress_environment_g.se_metric_head,
+				 sm_metric_linkage) {
+		list_for_each_entry_safe(variable_type,
+					 n,
+					 &stress_metric->sm_variable_types,
+					 svt_linkage) {
+			list_del_init(&variable_type->svt_linkage);
+			free(variable_type);
+		}
+		list_del_init(&stress_metric->sm_metric_linkage);
+		free(stress_metric);
+	}
+
+	if (!stress_environment_g.se_thread_datas)
 		return;
-	if (stress_environment_g->se_thread_datas)
-		free(stress_environment_g->se_thread_datas);
-	free(stress_environment_g);
+
+	for (i = 0; i < stress_environment_g.se_thread_number; i++) {
+		thread_data = &stress_environment_g.se_thread_datas[i];
+		if (thread_data)
+			free(thread_data->std_stress_metrics);
+	}
 }
 
-static int stress_variable_find_add(struct stress_environment *environment,
+static int stress_variable_find_add(struct stress_metric *sm,
 				    struct stress_variable_type *variable_type)
 {
 	struct stress_variable_type *type;
 
 	list_for_each_entry(type,
-	                    &stress_environment_g->se_variable_types,
+			    &sm->sm_variable_types,
 	                    svt_linkage) {
 		if (strcmp(type->svt_name, variable_type->svt_name) == 0) {
-			ERROR("stress plugin: multiple variables with same name \"%s\"",
+			ERROR("stress2: multiple variables with same name \"%s\"",
 			      type->svt_name);
 			return -1;
 		}
 	}
-	list_add_tail(&variable_type->svt_linkage, &environment->se_variable_types);
-	environment->se_variable_number++;
+	list_add_tail(&variable_type->svt_linkage, &sm->sm_variable_types);
+	sm->sm_variable_number++;
 	return 0;
 }
 
-static int stress_config_variable(struct stress_environment *environment,
+static int stress_config_variable(struct stress_metric *sm,
 				  oconfig_item_t *ci)
 {
 	struct stress_variable_type *variable_type;
@@ -632,7 +681,7 @@ static int stress_config_variable(struct stress_environment *environment,
 
 	variable_type = calloc(1, sizeof(*variable_type));
 	if (variable_type == NULL) {
-		ERROR("stress plugin: calloc failed.");
+		ERROR("stress2: calloc variable type failed");
 		return -1;
 	}
 
@@ -642,226 +691,290 @@ static int stress_config_variable(struct stress_environment *environment,
 			ret = cf_util_get_string_buffer(child, variable_type->svt_name,
 							sizeof(variable_type->svt_name));
 			if (ret) {
-				ERROR("stress plugin: failed to get string for \"Name\"");
+				ERROR("stress2: failed to get string for \"Name\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "Number") == 0) {
 			ret = cf_util_get_int(child, &value);
 			if (ret) {
-				ERROR("stress: failed to config \"Variable\" because of Number");
+				ERROR("stress2: failed to config \"Variable\" because of Number");
 				goto out;
 			}
 			if (value < 1) {
-				ERROR("stress: invalid Number value `%d' for `Variable'", value);
+				ERROR("stress2: invalid Number value `%d' for `Variable'", value);
 				goto out;
 			}
 			variable_type->svt_value_number = value;
 		} else if (strcasecmp(child->key, "UpdateIterval") == 0) {
 			ret = cf_util_get_int(child, &value);
 			if (ret) {
-				ERROR("stress: failed to config \"Variable\" because of UpdateIterval");
+				ERROR("stress2: failed to config \"Variable\" because of UpdateIterval");
 				goto out;
 			}
 			if (value < 0) {
-				ERROR("stress: invalid UpdateIterval value `%d' for `Variable'", value);
+				ERROR("stress2: invalid UpdateIterval value `%d' for `Variable'", value);
 				goto out;
 			}
 			variable_type->svt_update_interval = value;
 		} else {
-			ERROR("stress plugin: Option `%s' not allowed here.", child->key);
+			ERROR("stress2: Option `%s' not allowed here.", child->key);
 			goto out;
 		}
 	}
-	ret = stress_variable_find_add(environment, variable_type);
+	ret = stress_variable_find_add(sm, variable_type);
 	if (ret)
 		goto out;
-	environment->se_commit_number *= variable_type->svt_value_number;
+	sm->sm_commit_number *= variable_type->svt_value_number;
 	return 0;
 out:
 	free(variable_type);
 	return -1;
 }
 
-static int stress_config(oconfig_item_t *ci)
+static int stress_check_metric(struct stress_metric *sm)
 {
 	int i;
-	struct stress_thread_data *thread_data;
-	int value;
+
+	for (i = 0; i < STRESS_OPTION_MAX; i++) {
+		if (strlen(sm->sm_options[i]) == 0) {
+			ERROR("stress2: Option `%d' not configured", i);
+			return -EINVAL;
+		}
+	}
+	if (strlen(sm->sm_tsdb_name) == 0) {
+		ERROR("stress2: Option `TsdbName' not configured");
+		return -EINVAL;
+	}
+	if (strlen(sm->sm_tsdb_tags) == 0) {
+		ERROR("stress2: Option `TsdbTags' not configured");
+		return -EINVAL;
+	}
+	if (sm->sm_variable_number < 1) {
+		ERROR("stress2: no variable is configured");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int stress_config_metric(oconfig_item_t *ci)
+{
+	int i;
 	int status;
-	struct stress_variable *variables;
-	struct stress_variable *variable;
 	struct stress_variable_type *variable_type;
 	struct stress_variable_type *n;
-	int variable_index = 0;
+	char *buffer;
+	struct stress_metric *sm;
 	const char *stress_pattern = "\\$\\{(key|variable):([^}]+)\\}";
 
-	srand(time(NULL));
-
-	stress_environment_g = calloc(1, sizeof(struct stress_environment));
-	if (stress_environment_g == NULL) {
-		ERROR("not enough memory");
-		return -1;
+	sm = calloc(1, sizeof(struct stress_metric));
+	if (!sm) {
+		ERROR("stress2: failed to alloc metric memory");
+		return -ENOMEM;
 	}
-	stress_environment_g->se_variable_number = 0;
-	stress_environment_g->se_commit_number = 1;
-	INIT_LIST_HEAD(&stress_environment_g->se_variable_types);
-	stress_environment_g->se_read_number = 0;
-	status = stress_compile_regex(&stress_environment_g->se_regex, stress_pattern);
+	sm->sm_commit_number = 1;
+	INIT_LIST_HEAD(&sm->sm_variable_types);
+	INIT_LIST_HEAD(&sm->sm_metric_linkage);
+
+	status = stress_compile_regex(&sm->sm_regex, stress_pattern);
 	if (status) {
-		ERROR("stress: failed to compile regex `%s'", stress_pattern);
+		ERROR("stress2: failed to compile regex `%s'", stress_pattern);
 		goto out;
 	}
-	
 
 	for (i = 0; i < ci->children_num; i++) {
 		oconfig_item_t *child = ci->children + i;
-		if (strcasecmp(child->key, "Thread") == 0) {
-	    		status = cf_util_get_int(child, &value);
+		if (strcasecmp(child->key, "Variable") == 0) {
+			status = stress_config_variable(sm, child);
 			if (status) {
-				ERROR("stress: failed to get value for \"Thread\"");
-				goto out;
-			}
-			stress_environment_g->se_thread_number = value;
-		} else if (strcasecmp(child->key, "Variable") == 0) {
-			status = stress_config_variable(stress_environment_g, child);
-			if (status) {
-				ERROR("stress: failed to config \"Variable\"");
+				ERROR("stress2: failed to config \"Variable\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "Host") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_options[STRESS_OPTION_HOST],
+			buffer = sm->sm_options[STRESS_OPTION_HOST];
+			status = cf_util_get_string_buffer(child, buffer,
 							   STRESS_MAX_NAME);
 			if (status) {
-				ERROR("stress plugin: failed to get string for \"Host\"");
+				ERROR("stress2: failed to get string for \"Host\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "Plugin") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_options[STRESS_OPTION_PLUGIN],
+			buffer = sm->sm_options[STRESS_OPTION_PLUGIN],
+			status = cf_util_get_string_buffer(child, buffer,
 							   STRESS_MAX_NAME);
 			if (status) {
-				ERROR("stress plugin: failed to get string for \"Plugin\"");
+				ERROR("stress2: failed to get string for \"Plugin\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "PluginInstance") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_options[STRESS_OPTION_PLUGIN_INSTANCE],
+			buffer = sm->sm_options[STRESS_OPTION_PLUGIN_INSTANCE];
+			status = cf_util_get_string_buffer(child, buffer,
 							   STRESS_MAX_NAME);
 			if (status) {
-				ERROR("stress plugin: failed to get string for \"PluginInstance\"");
+				ERROR("stress2: failed to get string for \"PluginInstance\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "Type") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_options[STRESS_OPTION_TYPE],
+			buffer = sm->sm_options[STRESS_OPTION_TYPE];
+			status = cf_util_get_string_buffer(child, buffer,
 							   STRESS_MAX_NAME);
 			if (status) {
 				ERROR("stress plugin: failed to get string for \"Type\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "TypeInstance") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_options[STRESS_OPTION_TYPE_INSTANCE],
+			buffer = sm->sm_options[STRESS_OPTION_TYPE_INSTANCE];
+			status = cf_util_get_string_buffer(child, buffer,
 							   STRESS_MAX_NAME);
 			if (status) {
-				ERROR("stress plugin: failed to get string for \"TypeInstance\"");
+				ERROR("stress2: failed to get string for \"TypeInstance\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "TsdbName") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_tsdb_name,
-							   STRESS_MAX_NAME);
+			status = cf_util_get_string_buffer(child,
+						sm->sm_tsdb_name,
+						STRESS_MAX_NAME);
 			if (status) {
-				ERROR("stress plugin: failed to get string for \"TsdbName\"");
+				ERROR("stress2: failed to get string for \"TsdbName\"");
 				goto out;
 			}
 		} else if (strcasecmp(child->key, "TsdbTags") == 0) {
-			status = cf_util_get_string_buffer(child, stress_environment_g->se_tsdb_tags,
-							   STRESS_MAX_NAME);
+			status = cf_util_get_string_buffer(child,
+						sm->sm_tsdb_tags,
+						STRESS_MAX_NAME);
 			if (status) {
-				ERROR("stress plugin: failed to get string for \"TsdbTags\"");
+				ERROR("stress2: failed to get string for \"TsdbTags\"");
 				goto out;
 			}
-		} else {
-			ERROR("stress plugin: Option `%s' not allowed here", child->key);
-			goto out;
 		}
 	}
 
-	for (i = 0; i < STRESS_OPTION_MAX; i++) {
-		if (strlen(stress_environment_g->se_options[i]) == 0) {
-			ERROR("stress plugin: Option `%d' not configured", i);
-			goto out;
-		}
-	}
-
-	if (strlen(stress_environment_g->se_tsdb_name) == 0) {
-		ERROR("stress plugin: Option `TsdbName' not configured");
+	status = stress_check_metric(sm);
+	if (status)
 		goto out;
-	}
 
-	if (strlen(stress_environment_g->se_tsdb_tags) == 0) {
-		ERROR("stress plugin: Option `TsdbTags' not configured");
-		goto out;
-	}
-
-	if (stress_environment_g->se_thread_number < 1) {
-		WARNING("stress plugin: thread number invalid: %i, "
-			"use 1 instead",
-			stress_environment_g->se_thread_number);
-		stress_environment_g->se_thread_number = 1;
-	}
-
-	if (stress_environment_g->se_variable_number < 1) {
-		ERROR("stress plugin: no variable is configured");
-		goto out;
-	}
-
-	stress_environment_g->se_thread_datas =
-		calloc(stress_environment_g->se_thread_number,
-		       sizeof(struct stress_thread_data));
-	if (stress_environment_g->se_thread_datas == NULL) {
-		ERROR("stress plugin: Not enough memory");
-		goto out;
-	}
-
-	for (i = 0; i < stress_environment_g->se_thread_number; i++) {
-		thread_data = &stress_environment_g->se_thread_datas[i];
-
-		thread_data->std_thread_id = i;
-		pthread_attr_init(&thread_data->std_attr);
-		variables = calloc(1, stress_environment_g->se_variable_number *
-				   sizeof(struct stress_variable));
-		if (variables == NULL) {
-			ERROR("stress plugin: Not enough memory");
-			i--;
-			goto out_variable;
-		}
-
-		thread_data->std_variable_number = stress_environment_g->se_variable_number;
-		thread_data->std_variables = variables;
-		variable_index = 0;
-		list_for_each_entry(variable_type,
-				    &stress_environment_g->se_variable_types,
-				    svt_linkage) {
-			variable = &thread_data->std_variables[variable_index];
-			variable->sv_type = variable_type;
-			variable_index++;
-		}
-	}
+	list_add_tail(&sm->sm_metric_linkage,
+		      &stress_environment_g.se_metric_head);
+	stress_environment_g.se_metric_number++;
 	return 0;
-out_variable:
-	for (; i >= 0; i--) {
-		thread_data = &stress_environment_g->se_thread_datas[i];
-		variables = thread_data->std_variables;
-		free(variables);
-	}
-	free(stress_environment_g->se_thread_datas);
 out:
 	list_for_each_entry_safe(variable_type,
-				 n,
-	                         &stress_environment_g->se_variable_types,
-	                         svt_linkage) {
+				 n, &sm->sm_variable_types,
+				 svt_linkage) {
 		list_del_init(&variable_type->svt_linkage);
 		free(variable_type);
 	}
-	free(stress_environment_g);
-	return -1;
+	free(sm);
+	return status;
+}
+
+static int stress_setup_environment_thread(void)
+{
+	struct stress_thread_data *thread_data;
+	int status = 0, metric_index = 0;
+	int i;
+	struct stress_variable *variables;
+	struct stress_variable *variable;
+	struct stress_variable_type *variable_type;
+	int variable_index = 0;
+	struct stress_metric *stress_metric;
+
+	stress_environment_g.se_thread_datas =
+			calloc(stress_environment_g.se_thread_number,
+			sizeof(struct stress_thread_data));
+	if (stress_environment_g.se_thread_datas == NULL) {
+		ERROR("stress2: Not enough memory");
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < stress_environment_g.se_thread_number; i++) {
+		thread_data = &stress_environment_g.se_thread_datas[i];
+		thread_data->std_thread_id = i;
+		pthread_attr_init(&thread_data->std_attr);
+		struct stress_metric *stress_metrics =
+				calloc(stress_environment_g.se_metric_number,
+				       sizeof(struct stress_metric));
+		if (!stress_metrics) {
+			ERROR("stress2: failed to allocate metric memory");
+			goto out;
+		}
+		metric_index = 0;
+		list_for_each_entry(stress_metric,
+				    &stress_environment_g.se_metric_head,
+				    sm_metric_linkage) {
+			stress_metrics[metric_index] = *stress_metric;
+			variables = calloc(1,
+				stress_metric->sm_variable_number *
+				sizeof(struct stress_variable));
+			if (variables == NULL) {
+				status = -ENOMEM;
+				goto out;
+			}
+			stress_metrics[metric_index].sm_variables = variables;
+			variable_index = 0;
+			list_for_each_entry(variable_type,
+					    &stress_metric->sm_variable_types,
+					    svt_linkage) {
+				variable = &variables[variable_index];
+				variable->sv_type = variable_type;
+				variable_index++;
+			}
+			metric_index++;
+		}
+		thread_data->std_stress_metrics = stress_metrics;
+	}
+	return 0;
+
+out:
+	return status;
+}
+
+static int stress_config(oconfig_item_t *ci)
+{
+	int i;
+	int value;
+	int status;
+
+	srand(time(NULL));
+	stress_environment_g.se_thread_number = 0;
+	INIT_LIST_HEAD(&stress_environment_g.se_metric_head);
+	stress_environment_g.se_metric_number = 0;
+
+	for (i = 0; i < ci->children_num; i++) {
+		oconfig_item_t *child = ci->children + i;
+
+		if (strcasecmp(child->key, "Thread") == 0) {
+			status = cf_util_get_int(child, &value);
+			if (status) {
+				ERROR("stress2: failed to get value for \"Thread\"");
+				goto out;
+			}
+			stress_environment_g.se_thread_number = value;
+		} else if (strcasecmp(child->key, "Metric") == 0) {
+			status = stress_config_metric(child);
+			if (status)
+				goto out;
+		} else {
+			ERROR("stress2: Option `%s' not allowed here", child->key);
+			status = -EINVAL;
+			goto out;
+		}
+	}
+
+	if (stress_environment_g.se_thread_number < 1) {
+		WARNING("stress2: thread number invalid: %i, "
+			"use 1 instead", stress_environment_g.se_thread_number);
+		stress_environment_g.se_thread_number = 1;
+	}
+
+	status = stress_setup_environment_thread();
+	if (status)
+		goto out;
+
+	return 0;
+out:
+	stress_environment_fini();
+	return status;
 }
 
 void module_register (void)

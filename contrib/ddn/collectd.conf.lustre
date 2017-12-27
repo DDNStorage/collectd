@@ -223,3 +223,46 @@ LoadPlugin filedata
     Type "port_rcv_switch_relay_errors"
   </Item>
 </Plugin>
+
+LoadPlugin stress2
+<Plugin "stress2">
+  Thread 32
+  <Metric>
+	<Variable>
+	    Name "ost_index"
+	    Number 10
+	    UpdateIterval 0
+	</Variable>
+	<Variable>
+	    Name "job_id"
+	    Number 1000
+	    UpdateIterval 10
+	</Variable>
+	   Host "${key:hostname}"
+	   Plugin "stress-${variable:ost_index:OST%04x}"
+	   PluginInstance "jobstat_${variable:job_id:job%d}"
+	   Type "derive"
+	   TypeInstance "sum_read_bytes"
+	   TsdbName "ost_jobstats_samples"
+	   TsdbTags "optype=sum_read_bytes fs_name=stress ost_index=${variable:ost_index:OST%04x} job_id=${variable:job_id:job%d}"
+   </Metric>
+  <Metric>
+	<Variable>
+	    Name "mdt_index"
+	    Number 10
+	    UpdateIterval 0
+	</Variable>
+	<Variable>
+	    Name "md_stats"
+	    Number 10
+	    UpdateIterval 10
+	</Variable>
+	   Host "${key:hostname}"
+	   Plugin "stress-${variable:mdt_index:MDT%04x}"
+	   PluginInstance "md_stats"
+	   Type "derive"
+	   TypeInstance "open"
+	   TsdbName "md_stats"
+	   TsdbTags "optype=open fs_name=stress mdt_index=${variable:mdt_index:MDT%04x} mdt_stats_open=${variable:mdt_stats_open:%d}"
+   </Metric>
+</Plugin>
