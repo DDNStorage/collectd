@@ -29,6 +29,7 @@
 
 #define MAX_NAME_LENGH 1024
 #define TYPE_NAME_LEN	64
+#define MAX_WRITE_LEN	64
 
 #define MAX_JOBSTAT_FIELD_LENGTH 32
 #define MAX_SUBMIT_STRING_LENGTH DATA_MAX_NAME_LEN
@@ -254,7 +255,8 @@ struct filedata_entry {
 	mode_t			    fe_mode;
 	/* TODO: data */
 	int			    fe_flags;
-
+	_Bool			    fe_write_after_read;
+	char			    fe_write_content[MAX_WRITE_LEN + 1];
 	/* List of children */
 	struct list_head	    fe_children;
 	/* Linkage to parent's fe_children */

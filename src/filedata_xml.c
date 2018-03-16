@@ -171,6 +171,7 @@ filedata_entry_free(struct filedata_entry *entry)
 #define FILEDATA_XML_CONTEXT 		"context"
 #define FILEDATA_XML_CONTEXT_START	"start_string"
 #define FILEDATA_XML_CONTEXT_END	"end_string"
+#define FILEDATA_XML_WRITE_AFTER_READ	"write_after_read"
 
 static int string2mode(const char *string, mode_t *mode)
 {
@@ -864,6 +865,17 @@ filedata_xml_entry_parse(struct filedata_entry *parent, xmlNode *node)
 				break;
 			}
 			child->fe_flags |= FILEDATA_ENTRY_FLAG_MODE;
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_WRITE_AFTER_READ) == 0) {
+			value = (char *)xmlNodeGetContent(tmp);
+			if (strlen(value) > MAX_WRITE_LEN) {
+				status = -1;
+				FERROR("XML: write data '%s' is too long", value);
+				xmlFree(value);
+			}
+			strncpy(child->fe_write_content, value, MAX_WRITE_LEN);
+			child->fe_write_after_read = 1;
+			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, FILEDATA_XML_ITEM) == 0) {
 			value = (char*)xmlNodeGetContent(tmp);
 			xmlFree(value);
@@ -896,6 +908,11 @@ filedata_xml_entry_parse(struct filedata_entry *parent, xmlNode *node)
 
 	if (child->fe_mode == S_IFDIR && !list_empty(&child->fe_item_types)) {
 		FERROR("XML: directory entry should not have items");
+		status = -1;
+	}
+
+	if (child->fe_write_after_read && child->fe_mode != S_IFREG) {
+		FERROR("XML: directory entry could not write after read");
 		status = -1;
 	}
 
