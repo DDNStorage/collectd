@@ -988,6 +988,40 @@ err:
 	return status;
 }
 
+static int filedata_write_file(const char *path, char *value)
+{
+	struct stat st;
+	ssize_t count;
+	int status;
+	int fd;
+
+	status = stat(path, &st);
+	if (status) {
+		ERROR("failed to stat %s", path);
+		return -1;
+	}
+
+	fd = open(path, O_WRONLY);
+	if (fd < 0) {
+		FERROR("failed to open %s", path);
+		return -1;
+	}
+
+	count = write(fd, value, strlen(value));
+	if (count < 0) {
+		ERROR("failed to write %s: %s", path, strerror(errno));
+		status = -1;
+	} else if (count < strlen(value)) {
+		ERROR("wrote only %zd", count);
+		status = -1;
+	} else {
+		FINFO("wrote content '%s' to '%s'", value, path);
+	}
+	close(fd);
+
+	return status;
+}
+
 static struct filedata_subpath_fields *
 filedata_subpath_fields_alloc(struct filedata_entry	*entry)
 {
@@ -1193,6 +1227,14 @@ _filedata_entry_read(struct filedata_entry *entry,
 			}
 		}
 		free(filebuf);
+		if (entry->fe_write_after_read) {
+			status = filedata_write_file(path, entry->fe_write_content);
+			if (status) {
+				ERROR("unable to write file %s:%s",
+				      path, entry->fe_write_content);
+				return status;
+			}
+		}
 	} else {
 		filedata_entry_read_directory(entry,
 					      path,
