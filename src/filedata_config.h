@@ -104,38 +104,62 @@ struct filedata_field {
 #define FILEDATA_ITEM_FLAG_NAME			0x00000001
 #define FILEDATA_ITEM_FLAG_PATTERN		0x00000002
 #define FILEDATA_ITEM_FLAG_FIELD		0x00000004
-#define FILEDATA_ITEM_FLAG_CONTEXT		0x00000008
-#define FILEDATA_ITEM_FLAG_CONTEXT_SUBTYPE	0x00000010
+#define FILEDATA_ITEM_FLAG_CONTEXT_REGULAR_EXP	0x00000008
+/* Use <start_string>/<end_string> for context matching */
+#define FILEDATA_ITEM_FLAG_CONTEXT_START_END	0x00000010
 #define FILEDATA_ITEM_FLAG_FILLED		(FILEDATA_ITEM_FLAG_NAME | \
 						 FILEDATA_ITEM_FLAG_PATTERN | \
 						 FILEDATA_ITEM_FLAG_FIELD)
 
 struct filedata_item_type {
 	struct filedata_definition		 *fit_definition;
-	/* Pointer to entry */
-	struct filedata_entry			 *fit_entry;
 	char					  fit_type_name[MAX_NAME_LENGH + 1];
-	char					  fit_pattern[MAX_NAME_LENGH + 1];
-	regex_t				 	  fit_regex;
-	/* Linkage to entry( TODO: remove definition) */
+	/* Linkage to fit_items of a entry, or linkage to math item type
+	 * list of the definiton
+	 */
 	struct list_head			  fit_linkage;
-	/* Linkage to active */
+	/* Linkage to fe_active_item_types of a entry, or linkage to
+	 * active math item type list of the definiton
+	 */
 	struct list_head			  fit_active_linkage;
 	/* List of items */
 	struct list_head			  fit_items;
-	/* List of extends */
-	struct list_head			  fit_extends;
-	char					  fit_ext_tags[MAX_TSDB_TAGS_LENGTH + 1];
+	/* Flags to show which fields of this structure is valid */
+	int					  fit_flags;
+
+	/* Pointer to entry */
+	struct filedata_entry			 *fit_entry;
+	/* String of regular expression to match the item */
+	char					  fit_pattern[MAX_NAME_LENGH + 1];
+	/* Compiled regular expression to match the item */
+	regex_t				 	  fit_regex;
+	/* String of regular expression to match the context */
+	char					  fit_context[MAX_NAME_LENGH + 1];
+	/* Compiled regular expression to match the context */
+	regex_t				 	  fit_context_regex;
+	/*
+	 * Regular expression for context is sometimes too hard for matching.
+	 * Thus, <start_string><end_string> can be used for matching context.
+	 * Strings in fit_context_start and fit_context_end will be matched with
+	 * the data using raw sting format, not regular expression.
+	 */
+	char					  fit_context_start[MAX_NAME_LENGH + 1];
+	char					  fit_context_end[MAX_NAME_LENGH + 1];
 	/* List of field types */
 	struct list_head			  fit_field_list;
 	/* Array of field types */
 	struct filedata_field_type		**fit_field_array;
 	int					  fit_field_number;
-	int					  fit_flags;
-	char					  fit_context[MAX_NAME_LENGH + 1];
-	regex_t				 	  fit_context_regex;
-	char					  fit_context_start[MAX_NAME_LENGH + 1];
-	char					  fit_context_end[MAX_NAME_LENGH + 1];
+	/*
+	 * Exteneded parse can be configured in /etc/collectd.conf.
+	 * When doing extended parse, more TSDB tags can be added.
+	 * Extension with the format ${extendfield:NAME} is supported in the string.
+	 * Following is an example of the fit_ext_tags string:
+	 * "procname=${extendfield:procname} uid={extendfield:uid}"
+	 */
+	char					  fit_ext_tags[MAX_TSDB_TAGS_LENGTH + 1];
+	/* List of extends, i.e. fite_linkage */
+	struct list_head			  fit_extends;
 };
 
 struct filedata_item_rule {
@@ -150,28 +174,38 @@ struct filedata_item_rule {
 };
 
 struct filedata_item_type_extend_field {
-	/* Index of this field */
+	/* Index of this field in fite_fields */
 	int			fitef_index;
+	/* Name of this extended field, used when ${extendfield:NAME} */
 	char			fitef_name[MAX_NAME_LENGH + 1];
 	char			fitef_value[MAX_NAME_LENGH + 1];
-	/* Linkage of item type extend field */
+	/* Linkage of item type extend field, linked to fite_fields */
 	struct list_head	fitef_linkage;
 	/* Pointer to item type extend */
 	struct filedata_item_type_extend *fitef_ext;
 };
 
+/*
+ * Extended parse will parse the string of one field in a item further.
+ * When that field matches the $fite_regex, the extended parse can
+ * add extended tags to the data point that is being submtted.
+ */
 struct filedata_item_type_extend {
-	/* Filed index of this extend in item type*/
+	/* Field index of this extend in item type */
 	int				fite_field_index;
+	/* The regular expression to match the string of the field */
 	regex_t				fite_regex;
+	/* The regular expression string */
 	char				fite_string[MAX_NAME_LENGH + 1];
-	char				fite_tags[MAX_TSDB_TAGS_LENGTH + 1];
+	/* Whether the regular expression has been inited, only used when
+	 * freeing this structure
+	 */
 	_Bool				fite_regex_inited;
-	/* Number of field in list fite_fields*/
+	/* Number of field in list fite_fields */
 	int				fite_field_number;
-	/* List of item type extend field */
+	/* List of item type extend field, list of fitef_linkage */
 	struct list_head		fite_fields;
-	/* Linkage to item type extend */
+	/* Linkage to fit_extends of item type */
 	struct list_head		fite_linkage;
 	/* Pointer to item type */
 	struct filedata_item_type	*fite_item_type;
@@ -199,9 +233,18 @@ struct filedata_item {
 };
 
 struct filedata_item_data {
-	int			 fid_filed_number;
+	/* The field number of this data, this should be equal to its
+	 * fit_field_number
+	 */
+	int			 fid_field_number;
+	/* A item data might have multiple fields */
 	struct filedata_field	*fid_fields;
+	/* Whether fid_ext_tags is used or not */
 	int			 fid_ext_tags_used;
+	/* The string of tags generated at the extended parse stage
+	 * The fid_ext_tags will be added as tags together with
+	 * fft_submit.fs_tsdb_tags of the item field.
+	 */
 	char			 fid_ext_tags[MAX_TSDB_TAGS_LENGTH + 1];
 };
 
@@ -295,13 +338,24 @@ struct filedata_private_definition {
 };
 
 struct filedata_definition {
+	/* Whether this definition has been inited */
 	_Bool			  fd_inited;
+	/* Root entry */
 	struct filedata_entry	 *fd_root;
+	/* File name of definition file */
 	char			 *fd_filename;
+	/* The number of the current query, used for fi_query_interval */
 	unsigned long long	  fd_query_times;
+	/* Function to read file. The reading of file could be virtual,
+	 * not really reading from a real file.
+	 */
 	filedata_read_file_fn	  fd_read_file;
+	/* Private data used by specific plugins */
 	struct filedata_private_definition fd_private_definition;
-	/* used for tsdb tags */
+	/*
+	 * Extra TSDB tags can be added for all data collected in this
+	 * definition
+	 */
 	char			 *extra_tags;
 };
 

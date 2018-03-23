@@ -634,7 +634,7 @@ filedata_xml_item_parse(struct filedata_entry *entry, xmlNode *node)
 							       tmp->children);
 			if (status > 0) {
 				item->fit_flags |=
-					FILEDATA_ITEM_FLAG_CONTEXT_SUBTYPE;
+					FILEDATA_ITEM_FLAG_CONTEXT_START_END;
 				status = 0;
 				continue;
 			} else if (status < 0) {
@@ -657,7 +657,7 @@ filedata_xml_item_parse(struct filedata_entry *entry, xmlNode *node)
 					item->fit_context);
 				break;
 			}
-			item->fit_flags |= FILEDATA_ITEM_FLAG_CONTEXT;
+			item->fit_flags |= FILEDATA_ITEM_FLAG_CONTEXT_REGULAR_EXP;
 		} else {
 			FERROR("XML: entry have a unknown child %s", tmp->name);
 			status = -1;

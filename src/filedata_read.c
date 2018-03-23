@@ -512,7 +512,7 @@ filedata_item_data_alloc(struct filedata_item_type *type)
 		free(data);
 		return NULL;
 	}
-	data->fid_filed_number = field_number;
+	data->fid_field_number = field_number;
 
 	for (i = 1; i <= field_number; i++)
 		data->fid_fields[i].ff_type = type->fit_field_array[i];
@@ -523,7 +523,7 @@ filedata_item_data_alloc(struct filedata_item_type *type)
 static void filedata_item_data_clean(struct filedata_item_data *data)
 {
 	int i;
-	for (i = 1; i <= data->fid_filed_number; i++) {
+	for (i = 1; i <= data->fid_field_number; i++) {
 		data->fid_fields[i].ff_string[0] = '\0';
 		data->fid_fields[i].ff_value = 0;
 	}
@@ -800,9 +800,9 @@ out:
 	return status;
 }
 
-static int filedata_parse_context(struct filedata_item_type *type,
-				const char *content,
-				struct list_head *path_head)
+static int filedata_parse_context_regular_exp(struct filedata_item_type *type,
+					      const char *content,
+					      struct list_head *path_head)
 {
 	const char *previous = content;
 	regmatch_t *fields;
@@ -850,9 +850,9 @@ out:
 	return status;
 }
 
-static int filedata_parse_context_subtype(struct filedata_item_type *type,
-					const char *content,
-					struct list_head *path_head)
+static int filedata_parse_context_start_end(struct filedata_item_type *type,
+					    const char *content,
+					    struct list_head *path_head)
 {
 	const char *previous = content;
 	char *buf;
@@ -898,10 +898,12 @@ static int filedata_parse(struct filedata_item_type *type,
 			const char *content,
 			struct list_head *path_head)
 {
-	if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT)
-		return filedata_parse_context(type, content, path_head);
-	else if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_SUBTYPE)
-		return filedata_parse_context_subtype(type, content, path_head);
+	if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_REGULAR_EXP)
+		return filedata_parse_context_regular_exp(type, content,
+							  path_head);
+	else if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_START_END)
+		return filedata_parse_context_start_end(type, content,
+							path_head);
 	else
 		return _filedata_parse(type, content, path_head);
 }

@@ -200,7 +200,7 @@ void filedata_item_type_free(struct filedata_item_type *type)
 		free(type->fit_field_array);
 	if (type->fit_flags & FILEDATA_ITEM_FLAG_PATTERN)
 		regfree(&type->fit_regex);
-	if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT)
+	if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_REGULAR_EXP)
 		regfree(&type->fit_context_regex);
 	free(type);
 }
