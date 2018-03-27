@@ -705,7 +705,7 @@ static int stress_config_variable(struct stress_metric *sm,
 				goto out;
 			}
 			variable_type->svt_value_number = value;
-		} else if (strcasecmp(child->key, "UpdateIterval") == 0) {
+		} else if (strcasecmp(child->key, "UpdateInterval") == 0) {
 			ret = cf_util_get_int(child, &value);
 			if (ret) {
 				ERROR("stress2: failed to config \"Variable\" because of UpdateIterval");
