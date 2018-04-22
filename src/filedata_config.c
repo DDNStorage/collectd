@@ -130,6 +130,7 @@ struct filedata_field_type *filedata_field_type_alloc(void)
 
 void filedata_field_type_free(struct filedata_field_type *field_type)
 {
+	free(field_type->fft_submit.fs_math_entries);
 	free(field_type);
 }
 
@@ -382,8 +383,22 @@ int filedata_item_match(struct filedata_field *fields,
 	return match;
 }
 
+void filedata_math_entry_free(struct filedata_math_entry *fme)
+{
+	free(fme->fme_left_operand);
+	free(fme->fme_operation);
+	free(fme->fme_right_operand);
+	free(fme->fme_tsdb_name);
+	free(fme->fme_type);
+	free(fme->fme_type_instance);
+	free(fme);
+}
+
 void filedata_definition_fini(struct filedata_definition *definition)
 {
+	struct filedata_math_entry *fme;
+	struct filedata_math_entry *tmp;
+
 	if (definition->fd_root)
 		filedata_entry_free(definition->fd_root);
 	if (definition->fd_filename)
@@ -395,6 +410,12 @@ void filedata_definition_fini(struct filedata_definition *definition)
 	definition->fd_inited = 0;
 	definition->fd_query_times = 0;
 	definition->fd_read_file = NULL;
+
+	list_for_each_entry_safe(fme, tmp, &definition->fd_math_entries,
+				 fme_linkage) {
+		list_del_init(&fme->fme_linkage);
+		filedata_math_entry_free(fme);
+	}
 }
 
 /* TODO: read form XML file */

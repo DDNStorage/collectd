@@ -28,7 +28,12 @@
 #include "filedata_xml.h"
 #include "filedata_config.h"
 #include "filedata_read.h"
+#include <stdbool.h>
 
+static int
+__filedata_entry_read(struct filedata_entry *entry,
+		      char *pwd,
+		      struct list_head *path_head);
 static void filedata_instance_submit(const char *host,
 				     const char *plugin,
 				     const char *plugin_instance,
@@ -339,6 +344,139 @@ out:
 	return status;
 }
 
+/* operation check have been done in filedata_check_math_entry() */
+static uint64_t filedata_cal_math_value(uint64_t left, char *operation,
+					uint64_t right)
+{
+	if (strncmp(operation, "-", 1) == 0)
+		return left - right;
+	if (strncmp(operation, "+", 1) == 0)
+		return left + right;
+	if (strncmp(operation, "*", 1) == 0)
+		return left * right;
+	if (strncmp(operation, "/", 1) == 0)
+		return left / right;
+
+	return 0;
+}
+
+static void
+filedata_hash_math_entry_free(struct filedata_hash_math_entry *fhme)
+{
+	if (fhme) {
+		free(fhme->fhme_host);
+		free(fhme->fhme_plugin);
+		free(fhme->fhme_plugin_instance);
+		free(fhme->fhme_type);
+		free(fhme->fhme_type_instance);
+		free(fhme->fhme_key);
+		free(fhme);
+	}
+}
+
+static void
+filedata_generate_hash_math_key(char *key, const char *tsdb_name,
+				const char *tsdb_tags)
+{
+	memcpy(key, tsdb_name, strlen(tsdb_name));
+	memcpy(key + strlen(tsdb_name), ",", 1);
+	memcpy(key + strlen(tsdb_name) + 1, tsdb_tags,
+	       strlen(tsdb_tags));
+}
+
+static int
+filedata_add_math_instance(struct filedata_hash_math_entry **head,
+			   const char *host, const char *plugin,
+			   const char *plugin_instance,
+			   const char *type,
+			   const char *type_instance,
+			   const char *tsdb_name,
+			   const char *tsdb_tags, uint64_t value)
+{
+	struct filedata_hash_math_entry *fhme, *tmp;
+	int status = 0;
+
+	fhme = calloc(sizeof(*fhme), 1);
+	if (!fhme) {
+		status = -ENOMEM;
+		goto failed;
+	}
+	fhme->fhme_key = calloc(strlen(tsdb_name) +
+			   strlen(tsdb_tags) + 2, 1);
+	if (!fhme->fhme_key) {
+		status = -ENOMEM;
+		goto failed;
+	}
+	filedata_generate_hash_math_key(fhme->fhme_key, tsdb_name,
+					tsdb_tags);
+	fhme->fhme_host = strdup(host);
+	fhme->fhme_plugin = strdup(plugin);
+	fhme->fhme_plugin_instance = strdup(plugin_instance);
+	fhme->fhme_type = strdup(type);
+	fhme->fhme_type_instance = strdup(type_instance);
+	fhme->fhme_tsdb_name_len = strlen(tsdb_name);
+	fhme->fhme_value = value;
+	if (!fhme->fhme_host || !fhme->fhme_plugin ||
+	    !fhme->fhme_plugin_instance ||
+	    !fhme->fhme_type || !fhme->fhme_type_instance) {
+		status = -ENOMEM;
+		goto failed;
+	}
+	HASH_FIND_STR(*head, fhme->fhme_key, tmp);
+	if (tmp) {
+		status = -EEXIST;
+		goto failed;
+	}
+	HASH_ADD_STR(*head, fhme_key, fhme);
+failed:
+	if (status)
+		filedata_hash_math_entry_free(fhme);
+	return status;
+}
+
+static int
+filedata_add_math_instances(struct filedata_submit *submit,
+			    const char *host, const char *plugin,
+			    const char *plugin_instance,
+			    const char *type,
+			    const char *type_instance,
+			    const char *tsdb_name,
+			    const char *tsdb_tags, uint64_t value)
+{
+	struct filedata_math_entry *fme;
+	int i, status = 0;
+
+	for (i = 0; i < submit->fs_math_entry_num; i++) {
+		fme = submit->fs_math_entries[i];
+		/* we think it possible that @left_operand
+		 * and @right_operand are same, something
+		 * like A * A operation spotted by Li Xi.
+		 */
+		if (strncmp(fme->fme_left_operand, tsdb_name,
+			    strlen(tsdb_name)) == 0) {
+			status = filedata_add_math_instance(
+					&fme->fme_left_htable,
+					host, plugin, plugin_instance,
+					type, type_instance, tsdb_name,
+					tsdb_tags, value);
+			if (status)
+				break;
+		}
+		if (strncmp(fme->fme_right_operand, tsdb_name,
+			    strlen(tsdb_name)) == 0) {
+			status = filedata_add_math_instance(
+					&fme->fme_right_htable,
+					host, plugin, plugin_instance,
+					type, type_instance,
+					tsdb_name, tsdb_tags, value);
+			if (status)
+				break;
+		}
+	}
+
+	return status;
+}
+
 static int filedata_submit(struct filedata_submit *submit,
 			   struct list_head *path_head,
 			   struct filedata_field_type **field_types,
@@ -348,7 +486,7 @@ static int filedata_submit(struct filedata_submit *submit,
 			   uint64_t value,
 			   const char *ext_tsdb_tags,
 			   int ext_tags_used,
-			   const char *ext_tags)
+			   struct filedata_definition *fd)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
@@ -359,6 +497,7 @@ static int filedata_submit(struct filedata_submit *submit,
 	char tsdb_tags[MAX_TSDB_TAGS_LENGTH];
 	int status;
 	int n;
+	const char *ext_tags = fd->extra_tags;
 
 	status = filedata_submit_option_get(&submit->fs_host,
 					    path_head, field_types,
@@ -463,6 +602,14 @@ static int filedata_submit(struct filedata_submit *submit,
 		FERROR("submit: ignore overflow extra tsdb tags");
 	}
 
+	if (submit->fs_math_entry_num) {
+		status = filedata_add_math_instances(submit,
+					host, plugin, plugin_instance,
+					type, type_instance,
+					tsdb_name, tsdb_tags, value);
+		if (status)
+			return status;
+	}
 	filedata_instance_submit(host, plugin, plugin_instance,
 				 type, type_instance,
 				 tsdb_name, tsdb_tags,
@@ -489,7 +636,7 @@ static int filedata_data_submit(struct filedata_item_type *type,
 					data->fid_fields[i].ff_value,
 					data->fid_ext_tags,
 					data->fid_ext_tags_used,
-					type->fit_definition->extra_tags);
+					type->fit_definition);
 	}
 
 	return 0;
@@ -1161,7 +1308,7 @@ filedata_entry_read_directory(struct filedata_entry *entry,
 	list_for_each_entry(child,
 			    &entry->fe_active_children,
 			    fe_active_linkage) {
-		status = filedata_entry_read(child, path, path_head);
+		status = __filedata_entry_read(child, path, path_head);
 		if (status)
 			WARNING("entry path: %s not found, continue", path);
 	}
@@ -1169,10 +1316,9 @@ filedata_entry_read_directory(struct filedata_entry *entry,
 }
 
 static int
-_filedata_entry_read(struct filedata_entry *entry,
-		     char *pwd,
-		     char *subpath,
-		     struct list_head *path_head)
+filedata_entry_read_constant(struct filedata_entry *entry,
+			     char *pwd, char *subpath,
+			     struct list_head *path_head)
 {
 	char path[MAX_NAME_LENGH + 1];
 	int status = 0;
@@ -1246,9 +1392,9 @@ _filedata_entry_read(struct filedata_entry *entry,
 }
 
 int
-filedata_entry_read(struct filedata_entry *entry,
-		    char *pwd,
-		    struct list_head *path_head)
+__filedata_entry_read(struct filedata_entry *entry,
+		      char *pwd,
+		      struct list_head *path_head)
 {
 	char *subpath;
 	int status = 0;
@@ -1259,7 +1405,8 @@ filedata_entry_read(struct filedata_entry *entry,
 	assert(entry->fe_active);
 	if (entry->fe_subpath_type == SUBPATH_CONSTANT) {
 		subpath = entry->fe_subpath;
-		return _filedata_entry_read(entry, pwd, subpath, path_head);
+		status = filedata_entry_read_constant(entry,
+					pwd, subpath, path_head);
 	} else {
 		assert(entry->fe_subpath_type == SUBPATH_REGULAR_EXPRESSION);
 		parent_dir = opendir(pwd);
@@ -1279,8 +1426,8 @@ filedata_entry_read(struct filedata_entry *entry,
 							&subpath_fields);
 			if (status == 1) {
 				subpath = dp->d_name;
-				status =  _filedata_entry_read(entry, pwd,
-					subpath, path_head);
+				status = filedata_entry_read_constant(entry,
+						pwd, subpath, path_head);
 
 				list_del_init(&subpath_fields->fpfs_linkage);
 				filedata_subpath_fields_free(subpath_fields);
@@ -1295,6 +1442,85 @@ filedata_entry_read(struct filedata_entry *entry,
 		}
 		closedir(parent_dir);
 	}
+
+	return status;
+}
+
+static int
+filedata_submit_math_instance(struct filedata_entry *entry)
+{
+	int status = 0;
+	struct filedata_hash_math_entry *fhme, *tmp, *fhme_found;
+	struct filedata_math_entry *fme;
+	char *search_key = NULL;
+	uint64_t m_value;
+	char *tsdb_tags;
+
+	list_for_each_entry(fme, &entry->fe_definition->fd_math_entries,
+			    fme_linkage) {
+		HASH_ITER(hh, fme->fme_left_htable, fhme, tmp) {
+			tsdb_tags = fhme->fhme_key +
+				    fhme->fhme_tsdb_name_len + 1;
+			search_key = calloc(strlen(fme->fme_right_operand) +
+					    strlen(tsdb_tags) + 2, 1);
+			if (!search_key) {
+				status = -ENOMEM;
+				break;
+			}
+			filedata_generate_hash_math_key(search_key,
+					fme->fme_right_operand, tsdb_tags);
+			HASH_FIND_STR(fme->fme_right_htable, search_key,
+				      fhme_found);
+			if (fhme_found) {
+				m_value = filedata_cal_math_value(
+							fhme->fhme_value,
+							fme->fme_operation,
+							fhme_found->fhme_value);
+				filedata_instance_submit(fhme->fhme_host,
+						fhme->fhme_plugin,
+						fhme->fhme_plugin_instance,
+						fme->fme_type ?
+						fme->fme_type : fhme->fhme_type,
+						fme->fme_type_instance ?
+						fme->fme_type_instance :
+						fhme->fhme_type_instance,
+						fme->fme_tsdb_name, tsdb_tags,
+						m_value);
+			}
+			free(search_key);
+		}
+	}
+
+	/* free memory now */
+	list_for_each_entry(fme, &entry->fe_definition->fd_math_entries,
+			    fme_linkage) {
+		HASH_ITER(hh, fme->fme_left_htable, fhme, tmp) {
+			HASH_DEL(fme->fme_left_htable, fhme);
+			filedata_hash_math_entry_free(fhme);
+		}
+		HASH_ITER(hh, fme->fme_right_htable, fhme, tmp) {
+			HASH_DEL(fme->fme_right_htable, fhme);
+			filedata_hash_math_entry_free(fhme);
+		}
+		fme->fme_left_htable = NULL;
+		fme->fme_right_htable = NULL;
+	}
+
+	return status;
+}
+
+int
+filedata_entry_read(struct filedata_entry *entry,
+		    char *pwd,
+		    struct list_head *path_head)
+{
+	int status, status1;
+
+	status = __filedata_entry_read(entry, pwd, path_head);
+
+	status1 = filedata_submit_math_instance(entry);
+	if (!status && status1)
+		status = status1;
 
 	return status;
 }

@@ -29,6 +29,7 @@
 #include "list.h"
 #include "filedata_common.h"
 #include "filedata_config.h"
+#include "filedata_xml.h"
 
 static struct filedata_subpath_field_type *
 filedata_subpath_field_type_alloc(void)
@@ -138,6 +139,13 @@ filedata_entry_free(struct filedata_entry *entry)
 #define FILEDATA_XML_DEFINITION		"definition"
 #define FILEDATA_XML_VERSION		"version"
 #define FILEDATA_XML_ENTRY		"entry"
+#define FILEDATA_XML_MATH_ENTRY		"math_entry"
+#define FILEDATA_XML_ME_LEFT_OPERAND	"left_operand"
+#define FILEDATA_XML_ME_OPERATION	"operation"
+#define FILEDATA_XML_ME_RIGHT_OPERAND	"right_operand"
+#define FILEDATA_XML_ME_TSDB_NAME	"tsdb_name"
+#define FILEDATA_XML_ME_TYPE		"type"
+#define FILEDATA_XML_ME_TYPE_INSTANCE	"type_instance"
 #define FILEDATA_XML_SUBPATH		"subpath"
 #define FILEDATA_XML_MODE		"mode"
 #define FILEDATA_XML_ITEM		"item"
@@ -308,6 +316,68 @@ void filedata_entry_dump_active(struct filedata_entry *entry, int depth)
 			    fe_active_linkage) {
 		filedata_entry_dump_active(child, depth + 1);
 	}
+}
+
+static int filedata_update_submit_math(struct filedata_entry *fe,
+				       struct filedata_submit *fs)
+{
+	struct filedata_math_entry *fme;
+	int fs_math_entry_num = 0;
+	int index = 0;
+	char *tsdb_name = fs->fs_tsdb_name.lso_string;
+
+	list_for_each_entry(fme, &fe->fe_definition->fd_math_entries,
+			    fme_linkage) {
+		if (!strncmp(fme->fme_left_operand, tsdb_name,
+			     strlen(tsdb_name)) ||
+		    !strncmp(fme->fme_right_operand, tsdb_name,
+			     strlen(tsdb_name)))
+			fs_math_entry_num++;
+	}
+	if (!fs_math_entry_num)
+		return 0;
+	fs->fs_math_entry_num = fs_math_entry_num;
+	fs->fs_math_entries = calloc(sizeof(fme), fs_math_entry_num);
+	if (!fs->fs_math_entries)
+		return -ENOMEM;
+
+	list_for_each_entry(fme, &fe->fe_definition->fd_math_entries,
+			    fme_linkage) {
+		if (!strncmp(fme->fme_left_operand, tsdb_name,
+			     strlen(tsdb_name)) ||
+		    !strncmp(fme->fme_right_operand, tsdb_name,
+			     strlen(tsdb_name)))
+			fs->fs_math_entries[index++] = fme;
+	}
+
+	return 0;
+}
+
+static int filedata_update_math_entry(struct filedata_entry *entry)
+{
+	struct filedata_entry *child;
+	struct filedata_item_type *item;
+	struct filedata_field_type *field;
+	int status = 0;
+
+	list_for_each_entry(item,
+			    &entry->fe_item_types, fit_linkage) {
+		list_for_each_entry(field, &item->fit_field_list,
+				    fft_linkage) {
+			status = filedata_update_submit_math(entry,
+					&field->fft_submit);
+			if (status)
+				return status;
+		}
+	}
+
+	list_for_each_entry(child, &entry->fe_children, fe_linkage) {
+		status = filedata_update_math_entry(child);
+		if (status)
+			return status;
+	}
+
+	return 0;
 }
 
 static void
@@ -925,11 +995,111 @@ filedata_xml_entry_parse(struct filedata_entry *parent, xmlNode *node)
 }
 
 static int
-filedata_xml_definition_fill(struct filedata_entry *root_entry, xmlNode *node)
+filedata_check_math_entry(struct filedata_math_entry *fme)
+{
+	char *operation = fme->fme_operation;
+
+	if (!fme->fme_left_operand || !fme->fme_right_operand ||
+	    !fme->fme_operation || !fme->fme_tsdb_name) {
+		FERROR("XML: please specify left_operand,"
+			"right_operand, operation, tsdb_name\n");
+		return -EINVAL;
+	}
+	if (strncmp(operation, "+", 1) &&
+	    strncmp(operation, "-", 1) &&
+	    strncmp(operation, "*", 1) &&
+	    strncmp(operation, "/", 1)) {
+		FERROR("XML: math_entry only support +,-,*,/\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+filedata_xml_get_str(xmlNode *tmp, char **str)
+{
+	int status = 0;
+	char *value;
+
+	value = (char *)xmlNodeGetContent(tmp);
+	free(*str);
+	*str = strdup(value);
+	if (!*str)
+		status = -ENOMEM;
+	xmlFree(value);
+
+	return status;
+}
+
+static int
+filedata_xml_math_entry_parse(struct filedata_definition *definition,
+			      xmlNode *node)
+{
+	xmlNode *tmp;
+	int status = 0;
+	struct filedata_math_entry *fme;
+
+	fme = calloc(sizeof(*fme), 1);
+	if (!fme)
+		return -ENOMEM;
+
+	for (tmp = node; tmp; tmp = tmp->next) {
+		if (tmp->type != XML_ELEMENT_NODE)
+			continue;
+		if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_LEFT_OPERAND) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_left_operand);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_OPERATION) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_operation);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_RIGHT_OPERAND) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_right_operand);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_TSDB_NAME) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_tsdb_name);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_TYPE) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_type);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_TYPE_INSTANCE) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_type_instance);
+		} else {
+			FERROR("XML: entry have a unknown child %s", tmp->name);
+			status = -EINVAL;
+		}
+		if (status)
+			break;
+	}
+
+	if (status == 0) {
+		fme->fme_left_htable = NULL;
+		fme->fme_right_htable = NULL;
+		status = filedata_check_math_entry(fme);
+	}
+	if (status == 0)
+		list_add_tail(&fme->fme_linkage, &definition->fd_math_entries);
+	else
+		filedata_math_entry_free(fme);
+
+	return status;
+}
+
+static int
+filedata_xml_definition_fill(struct filedata_definition *definition,
+			     xmlNode *node)
 {
 	xmlNode *tmp;
 	int status = 0;
 	char *value;
+	struct filedata_entry *root_entry = definition->fd_root;
 
 	for (tmp = node; tmp; tmp = tmp->next) {
 		if (tmp->type != XML_ELEMENT_NODE) {
@@ -941,6 +1111,10 @@ filedata_xml_definition_fill(struct filedata_entry *root_entry, xmlNode *node)
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, FILEDATA_XML_ENTRY) == 0) {
 			filedata_xml_entry_parse(root_entry, tmp->children);
+		} else if (strcmp((char *)tmp->name,
+				  FILEDATA_XML_MATH_ENTRY) == 0) {
+			status = filedata_xml_math_entry_parse(definition,
+							       tmp->children);
 		} else {
 			FERROR("XML: definition have a unknown child %s", tmp->name);
 			status = -1;
@@ -951,7 +1125,8 @@ filedata_xml_definition_fill(struct filedata_entry *root_entry, xmlNode *node)
 }
 
 static int
-filedata_xml_definition_get(struct filedata_entry *root_entry, xmlNode *root)
+filedata_xml_definition_get(struct filedata_definition *definition,
+			    xmlNode *root)
 {
 	int status = 0;
 
@@ -971,7 +1146,7 @@ filedata_xml_definition_get(struct filedata_entry *root_entry, xmlNode *root)
 	}
 
 	//luster_entry_add(parent);
-	status = filedata_xml_definition_fill(root_entry, root->children);
+	status = filedata_xml_definition_fill(definition, root->children);
 	if (status) {
 		FERROR("XML: failed to fill definition");
 	}
@@ -995,6 +1170,7 @@ filedata_xml_parse(struct filedata_definition *definition, const char *xml_file)
 	definition->fd_root->fe_subpath[1] = '\0';
 	definition->fd_root->fe_mode = S_IFDIR;
 	definition->fd_root->fe_subpath_type = SUBPATH_CONSTANT;
+	INIT_LIST_HEAD(&definition->fd_math_entries);
 
 	/*
 	 * this initialize the library and check potential ABI mismatches
@@ -1015,7 +1191,7 @@ filedata_xml_parse(struct filedata_definition *definition, const char *xml_file)
 	/*Get the root element node */
 	root_element = xmlDocGetRootElement(doc);
 
-	status = filedata_xml_definition_get(definition->fd_root, root_element);
+	status = filedata_xml_definition_get(definition, root_element);
 	if (status) {
 		FERROR("XML: failed to get definition from %s", xml_file);
 	}
@@ -1030,6 +1206,8 @@ out:
 	 */
 	xmlCleanupParser();
 	//filedata_entry_dump(definition->fd_root, 0);
+	if (!status)
+		status = filedata_update_math_entry(definition->fd_root);
 	if (status) {
 		filedata_entry_free(definition->fd_root);
 		definition->fd_root = NULL;

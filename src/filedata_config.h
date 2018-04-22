@@ -26,6 +26,8 @@
 #include <stdint.h>
 #include "list.h"
 #include "liboconfig/oconfig.h"
+#include <uthash.h>
+#include <stdbool.h>
 
 #define MAX_NAME_LENGH 1024
 #define TYPE_NAME_LEN	64
@@ -67,6 +69,25 @@ typedef int (*filedata_read_fn) (struct filedata_item_type *type);
 					 FILEDATA_FIELD_FLAG_OPTION_TSDB_NAME |\
 					 FILEDATA_FIELD_FLAG_OPTION_TSDB_TAGS)
 
+struct filedata_hash_math_entry {
+	char *fhme_key; /*consist of tsdb_name, tsdb_tags */
+
+	int fhme_tsdb_name_len;
+	char *fhme_host;
+	char *fhme_plugin;
+	char *fhme_plugin_instance;
+	char *fhme_type;
+	char *fhme_type_instance;
+
+	uint64_t fhme_value;
+	/*
+	 * makes this structure hashable, sigh
+	 * we'd better not change this function
+	 * name from @hh to something else since
+	 * many HASH_xxx macro reply on this name..
+	 */
+	UT_hash_handle hh;
+};
 
 struct filedata_submit_option {
 	char			lso_string[MAX_NAME_LENGH + 1];
@@ -81,6 +102,10 @@ struct filedata_submit {
 	/* Support for submiting to write_tsdb plugin */
 	struct filedata_submit_option fs_tsdb_name;
 	struct filedata_submit_option fs_tsdb_tags;
+	/* match entry related this tsdb_name */
+	struct filedata_math_entry **fs_math_entries;
+	/* how many math entries related to this tsdb_name */
+	int fs_math_entry_num;
 };
 
 struct filedata_field_type {
@@ -284,6 +309,18 @@ typedef enum {
 	SUBPATH_REGULAR_EXPRESSION,
 } filedata_subpath_t;
 
+struct filedata_math_entry {
+	char		*fme_left_operand;
+	char		*fme_right_operand;
+	char		*fme_operation;
+
+	char		*fme_tsdb_name;	/* submit instance */
+	char		*fme_type;
+	char		*fme_type_instance;
+	struct filedata_hash_math_entry	*fme_left_htable;
+	struct filedata_hash_math_entry *fme_right_htable;
+	struct list_head	fme_linkage;
+};
 
 struct filedata_entry {
 	struct filedata_definition *fe_definition;
@@ -357,6 +394,9 @@ struct filedata_definition {
 	 * definition
 	 */
 	char			 *extra_tags;
+
+	/* list of match entries */
+	struct list_head	fd_math_entries;
 };
 
 struct filedata_configs {
