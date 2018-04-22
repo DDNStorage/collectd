@@ -25,6 +25,7 @@
 
 int filedata_xml_parse(struct filedata_definition *definition, const char *xml_file);
 void filedata_entry_free(struct filedata_entry *entry);
+void filedata_math_entry_free(struct filedata_math_entry *fme);
 void filedata_entry_dump_active(struct filedata_entry *entry, int depth);
 void filedata_entry_dump(struct filedata_entry *entry, int depth);
 int
