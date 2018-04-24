@@ -112,8 +112,6 @@ static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
 
 static int ime_read(void)
 {
-	struct list_head path_head;
-
 	if (ime_config_g == NULL) {
 		ERROR("ime plugin is not configured properly");
 		return -1;
@@ -123,9 +121,7 @@ static int ime_read(void)
 		return 0;
 
 	ime_config_g->fc_definition.fd_query_times++;
-	INIT_LIST_HEAD(&path_head);
-	return filedata_entry_read(ime_config_g->fc_definition.fd_root, "/",
-				   &path_head);
+	return filedata_entry_read(ime_config_g->fc_definition.fd_root, "/");
 }
 
 static int ime_config_internal(oconfig_item_t *ci)

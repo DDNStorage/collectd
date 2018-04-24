@@ -1037,7 +1037,6 @@ failed:
 
 static int ssh_read(user_data_t *user_data)
 {
-	struct list_head path_head;
 	struct filedata_configs *ssh_configss = user_data->data;
 
 	if (ssh_configss == NULL) {
@@ -1051,9 +1050,7 @@ static int ssh_read(user_data_t *user_data)
 	}
 
 	ssh_configss->fc_definition.fd_query_times++;
-	INIT_LIST_HEAD(&path_head);
-	return filedata_entry_read(ssh_configss->fc_definition.fd_root, "/",
-				   &path_head);
+	return filedata_entry_read(ssh_configss->fc_definition.fd_root, "/");
 }
 
 static int check_server_host(const char *host)

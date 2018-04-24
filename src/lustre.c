@@ -30,8 +30,6 @@ struct filedata_configs *lustre_config_g = NULL;
 
 static int lustre_read(void)
 {
-	struct list_head path_head;
-
 	if (lustre_config_g == NULL) {
 		ERROR("lustre plugin is not configured properly");
 		return -1;
@@ -41,10 +39,8 @@ static int lustre_read(void)
 		return 0;
 
 	lustre_config_g->fc_definition.fd_query_times++;
-	INIT_LIST_HEAD(&path_head);
 	return filedata_entry_read(lustre_config_g->fc_definition.fd_root,
-				   "/",
-				   &path_head);
+				   "/");
 }
 
 static int lustre_config_internal(oconfig_item_t *ci)

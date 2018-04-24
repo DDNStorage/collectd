@@ -138,8 +138,6 @@ out_free:
 
 static int gpfs_read(void)
 {
-	struct list_head path_head;
-
 	if (gpfs_config_g == NULL) {
 		ERROR("gpfs plugin is not configured properly");
 		return -1;
@@ -149,9 +147,7 @@ static int gpfs_read(void)
 		return 0;
 
 	gpfs_config_g->fc_definition.fd_query_times++;
-	INIT_LIST_HEAD(&path_head);
-	return filedata_entry_read(gpfs_config_g->fc_definition.fd_root, "/",
-				 &path_head);
+	return filedata_entry_read(gpfs_config_g->fc_definition.fd_root, "/");
 }
 
 static int gpfs_config_internal(oconfig_item_t *ci)
