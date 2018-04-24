@@ -1509,14 +1509,13 @@ filedata_submit_math_instance(struct filedata_entry *entry)
 	return status;
 }
 
-int
-filedata_entry_read(struct filedata_entry *entry,
-		    char *pwd,
-		    struct list_head *path_head)
+int filedata_entry_read(struct filedata_entry *entry, char *pwd)
 {
 	int status, status1;
+	struct list_head path_head;
 
-	status = __filedata_entry_read(entry, pwd, path_head);
+	INIT_LIST_HEAD(&path_head);
+	status = __filedata_entry_read(entry, pwd, &path_head);
 
 	status1 = filedata_submit_math_instance(entry);
 	if (!status && status1)

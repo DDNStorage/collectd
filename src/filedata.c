@@ -28,7 +28,6 @@ static unsigned int filedata_seq = 0;
 
 static int filedata_read(user_data_t *user_data)
 {
-	struct list_head path_head;
 	struct filedata_configs *filedata_configs = user_data->data;
 
 	if (filedata_configs == NULL) {
@@ -40,10 +39,8 @@ static int filedata_read(user_data_t *user_data)
 		return 0;
 
 	filedata_configs->fc_definition.fd_query_times++;
-	INIT_LIST_HEAD(&path_head);
 	return filedata_entry_read(filedata_configs->fc_definition.fd_root,
-				   "/",
-				   &path_head);
+				   "/");
 }
 
 static int filedata_shutdown(struct filedata_configs * filedata_configs)

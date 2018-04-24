@@ -23,9 +23,7 @@
 #define FILEDATA_READ_H
 #include "filedata_config.h"
 int
-filedata_entry_read(struct filedata_entry *entry,
-		    char *pwd,
-		    struct list_head *path_head);
+filedata_entry_read(struct filedata_entry *entry, char *pwd);
 void filedata_subpath_fields_free(struct filedata_subpath_fields *fields);
 #endif /* FILEDATA_READ_H */
 
