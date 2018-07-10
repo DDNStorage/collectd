@@ -271,6 +271,8 @@ struct filedata_item_data {
 	 * fft_submit.fs_tsdb_tags of the item field.
 	 */
 	char			 fid_ext_tags[MAX_TSDB_TAGS_LENGTH + 1];
+	/* time before query happen */
+	cdtime_t		 fid_query_time;
 };
 
 struct filedata_subpath_field_type {
