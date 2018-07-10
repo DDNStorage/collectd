@@ -41,7 +41,8 @@ static void filedata_instance_submit(const char *host,
 				     const char *type_instance,
 				     const char *tsdb_name,
 				     const char *tsdb_tags,
-				     uint64_t value)
+				     uint64_t value,
+				     cdtime_t time)
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
@@ -67,6 +68,7 @@ static void filedata_instance_submit(const char *host,
 	}
 	vl.values = values;
 	vl.values_len = 1;
+	vl.time = time;
 	sstrncpy(vl.host, host, sizeof(vl.host));
 	sstrncpy(vl.plugin, plugin, sizeof(vl.plugin));
 	sstrncpy(vl.plugin_instance, plugin_instance,
@@ -90,7 +92,8 @@ static void filedata_instance_submit(const char *host,
 	      "type_instance %s, "
 	      "tsdb_name %s, "
 	      "tsdb_tags %s, "
-	      "value %"PRIu64,
+	      "value %"PRIu64", "
+	      "time %llu ns",
 	      vl.host,
 	      vl.plugin,
 	      vl.plugin_instance,
@@ -98,7 +101,8 @@ static void filedata_instance_submit(const char *host,
 	      vl.type_instance,
 	      tsdb_name,
 	      tsdb_tags,
-	      value);
+	      value,
+	      (unsigned long long)CDTIME_T_TO_NS(vl.time));
 
 	plugin_dispatch_values(&vl);
 out:
@@ -486,7 +490,8 @@ static int filedata_submit(struct filedata_submit *submit,
 			   uint64_t value,
 			   const char *ext_tsdb_tags,
 			   int ext_tags_used,
-			   struct filedata_definition *fd)
+			   struct filedata_definition *fd,
+			   cdtime_t time)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
@@ -613,7 +618,7 @@ static int filedata_submit(struct filedata_submit *submit,
 	filedata_instance_submit(host, plugin, plugin_instance,
 				 type, type_instance,
 				 tsdb_name, tsdb_tags,
-				 value);
+				 value, time);
 	return status;
 }
 
@@ -636,7 +641,8 @@ static int filedata_data_submit(struct filedata_item_type *type,
 					data->fid_fields[i].ff_value,
 					data->fid_ext_tags,
 					data->fid_ext_tags_used,
-					type->fit_definition);
+					type->fit_definition,
+					data->fid_query_time);
 	}
 
 	return 0;
@@ -853,7 +859,7 @@ out:
 }
 
 static int _filedata_parse(struct filedata_item_type *type,
-			   const char *content,
+			   const char *content, cdtime_t time,
 			   struct list_head *path_head)
 {
 	const char *previous = content;
@@ -875,6 +881,7 @@ static int _filedata_parse(struct filedata_item_type *type,
 		status = -1;
 		goto out;
 	}
+	data->fid_query_time = time;
 
 	while (1) {
 		int i = 0;
@@ -949,6 +956,7 @@ out:
 
 static int filedata_parse_context_regular_exp(struct filedata_item_type *type,
 					      const char *content,
+					      cdtime_t time,
 					      struct list_head *path_head)
 {
 	const char *previous = content;
@@ -985,7 +993,7 @@ static int filedata_parse_context_regular_exp(struct filedata_item_type *type,
 			content + start, finish - start);
 		buf[finish - start] = '\0';
 
-		status = _filedata_parse(type, buf, path_head);
+		status = _filedata_parse(type, buf, time, path_head);
 		if (status)
 			break;
 		previous += fields[0].rm_eo;
@@ -998,7 +1006,7 @@ out:
 }
 
 static int filedata_parse_context_start_end(struct filedata_item_type *type,
-					    const char *content,
+					    const char *content, cdtime_t time,
 					    struct list_head *path_head)
 {
 	const char *previous = content;
@@ -1030,7 +1038,7 @@ static int filedata_parse_context_start_end(struct filedata_item_type *type,
 		}
 		strncpy(buf, p_start, p_end - p_start + 1);
 
-		status = _filedata_parse(type, buf, path_head);
+		status = _filedata_parse(type, buf, time, path_head);
 		if (status)
 			break;
 		previous = p_end;
@@ -1042,17 +1050,17 @@ out:
 }
 
 static int filedata_parse(struct filedata_item_type *type,
-			const char *content,
+			const char *content, cdtime_t time,
 			struct list_head *path_head)
 {
 	if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_REGULAR_EXP)
 		return filedata_parse_context_regular_exp(type, content,
-							  path_head);
+							  time, path_head);
 	else if (type->fit_flags & FILEDATA_ITEM_FLAG_CONTEXT_START_END)
 		return filedata_parse_context_start_end(type, content,
-							path_head);
+							time, path_head);
 	else
-		return _filedata_parse(type, content, path_head);
+		return _filedata_parse(type, content, time, path_head);
 }
 
 #define START_FILE_SIZE (1048576)
@@ -1326,6 +1334,7 @@ filedata_entry_read_constant(struct filedata_entry *entry,
 	struct filedata_item_type *type;
 	ssize_t size;
 	int max_size = sizeof(path) - 1;
+	cdtime_t query_time;
 
 	strncpy(path, pwd, max_size);
 	max_size -= strlen(pwd);
@@ -1347,6 +1356,7 @@ filedata_entry_read_constant(struct filedata_entry *entry,
 	if (entry->fe_mode == S_IFREG) {
 		assert(list_empty(&entry->fe_active_children));
 		assert(list_empty(&entry->fe_children));
+		query_time = cdtime();
 		if (entry->fe_definition->fd_read_file != NULL) {
 			status = entry->fe_definition->fd_read_file(path,
 				&filebuf, &size,
@@ -1365,7 +1375,8 @@ filedata_entry_read_constant(struct filedata_entry *entry,
 			FINFO("parsing %s for type %s",
 			      path,
 			      type->fit_type_name);
-			status = filedata_parse(type, filebuf, path_head);
+			status = filedata_parse(type, filebuf, query_time,
+						path_head);
 			if (status) {
 				ERROR("unable to parse file %s for type %s",
 				      path,
@@ -1485,7 +1496,7 @@ filedata_submit_math_instance(struct filedata_entry *entry)
 						fme->fme_type_instance :
 						fhme->fhme_type_instance,
 						fme->fme_tsdb_name, tsdb_tags,
-						m_value);
+						m_value, cdtime());
 			}
 			free(search_key);
 		}
