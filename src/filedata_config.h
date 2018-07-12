@@ -58,6 +58,7 @@ typedef int (*filedata_read_fn) (struct filedata_item_type *type);
 #define FILEDATA_FIELD_FLAG_OPTION_TYPE_INSTANCE	0x00000080
 #define FILEDATA_FIELD_FLAG_OPTION_TSDB_NAME		0x00000100
 #define FILEDATA_FIELD_FLAG_OPTION_TSDB_TAGS		0x00000200
+#define FILEDATA_FIELD_FLAG_FILL_FIRST_VALUE		0x00000400 /* optional */
 #define FILEDATA_FIELD_FLAG_FILLED	(FILEDATA_FIELD_FLAG_INDEX | \
 					 FILEDATA_FIELD_FLAG_NAME | \
 					 FILEDATA_FIELD_FLAG_TYPE |\
@@ -116,6 +117,7 @@ struct filedata_field_type {
 	/* Linkage to item type */
 	struct list_head		 fft_linkage;
 	int				 fft_flags;
+	uint64_t			 fft_first_value;
 	struct filedata_submit		 fft_submit;
 };
 
@@ -420,7 +422,8 @@ int filedata_compile_regex(regex_t *preg, const char *regex);
 void filedata_definition_fini(struct filedata_definition *definition);
 int filedata_item_match(struct filedata_field *fields,
 			int field_number,
-			struct filedata_item_type *type);
+			struct filedata_item_type *type,
+			struct filedata_item **ret_item);
 struct filedata_item *filedata_item_alloc();
 void filedata_item_add(struct filedata_item *item);
 void filedata_item_free(struct filedata_item *item);

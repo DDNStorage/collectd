@@ -28,12 +28,60 @@
 #include "filedata_xml.h"
 #include "filedata_config.h"
 #include "filedata_read.h"
+#include "utils_cache.h"
 #include <stdbool.h>
 
 static int
 __filedata_entry_read(struct filedata_entry *entry,
 		      char *pwd,
 		      struct list_head *path_head);
+
+static int filedata_init_instance_value(value_t *value,
+					const char *type,
+					uint64_t v)
+{
+	if (strcmp(type, "derive") == 0) {
+		value->derive = (derive_t)v;
+	} else if (strcmp(type, "gauge") == 0) {
+		value->gauge = (gauge_t)v;
+	} else if (strcmp(type, "counter") == 0) {
+		value->counter = (counter_t)v;
+	} else if (strcmp(type, "absolute") == 0) {
+		value->absolute = (absolute_t)v;
+	} else {
+		ERROR("unsupported type %s\n", type);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static void filedata_dispatch_values(value_list_t *vl,
+				     const char *tsdb_name,
+				     const char *tsdb_tags,
+				     uint64_t value)
+{
+	FINFO("host %s, "
+	      "plugin %s, "
+	      "plugin_instance %s, "
+	      "type %s, "
+	      "type_instance %s, "
+	      "tsdb_name %s, "
+	      "tsdb_tags %s, "
+	      "value %"PRIu64", "
+	      "time %llu ns",
+	      vl->host,
+	      vl->plugin,
+	      vl->plugin_instance,
+	      vl->type,
+	      vl->type_instance,
+	      tsdb_name,
+	      tsdb_tags,
+	      value,
+	      (unsigned long long)CDTIME_T_TO_NS(vl->time));
+
+	plugin_dispatch_values(vl);
+}
+
 static void filedata_instance_submit(const char *host,
 				     const char *plugin,
 				     const char *plugin_instance,
@@ -42,33 +90,26 @@ static void filedata_instance_submit(const char *host,
 				     const char *tsdb_name,
 				     const char *tsdb_tags,
 				     uint64_t value,
-				     cdtime_t time)
+				     cdtime_t time,
+				     bool fill_first_value,
+				     uint64_t first_value,
+				     int query_interval)
 {
 	value_t values[1];
 	value_list_t vl = VALUE_LIST_INIT;
 	int status;
-
-	if (strcmp(type, "derive") == 0) {
-		values[0].derive = (derive_t)value;
-	} else if (strcmp(type, "gauge") == 0) {
-		values[0].gauge = (gauge_t)value;
-	} else if (strcmp(type, "counter") == 0) {
-		values[0].counter = (counter_t)value;
-	} else if (strcmp(type, "absolute") == 0) {
-		values[0].absolute = (absolute_t)value;
-	} else {
-		ERROR("unsupported type %s\n", type);
-		return;
-	}
+	char name[6 * DATA_MAX_NAME_LEN];
+	size_t v_num;
+	value_t *vs;
 
 	vl.meta = meta_data_create();
 	if (vl.meta == NULL) {
 		FERROR("Submit: meta_data_create failed");
 		return;
 	}
+
 	vl.values = values;
 	vl.values_len = 1;
-	vl.time = time;
 	sstrncpy(vl.host, host, sizeof(vl.host));
 	sstrncpy(vl.plugin, plugin, sizeof(vl.plugin));
 	sstrncpy(vl.plugin_instance, plugin_instance,
@@ -85,26 +126,33 @@ static void filedata_instance_submit(const char *host,
 		FERROR("Submit: meta_data_add_string failed");
 		goto out;
 	}
-	FINFO("host %s, "
-	      "plugin %s, "
-	      "plugin_instance %s, "
-	      "type %s, "
-	      "type_instance %s, "
-	      "tsdb_name %s, "
-	      "tsdb_tags %s, "
-	      "value %"PRIu64", "
-	      "time %llu ns",
-	      vl.host,
-	      vl.plugin,
-	      vl.plugin_instance,
-	      vl.type,
-	      vl.type_instance,
-	      tsdb_name,
-	      tsdb_tags,
-	      value,
-	      (unsigned long long)CDTIME_T_TO_NS(vl.time));
 
-	plugin_dispatch_values(&vl);
+	if (!fill_first_value)
+		goto skip;
+
+	if (FORMAT_VL(name, sizeof(name), &vl) != 0) {
+		FERROR("Submit: FORMAT_VL failed.");
+		goto out;
+	}
+	
+	/* if found means this is not first inserting */
+	status = uc_get_value_by_name(name, &vs, &v_num);
+	if (status == 0)
+		goto skip;
+
+	status = filedata_init_instance_value(&(values[0]), type, first_value);
+	if (status)
+		goto out;
+	/* use 1/2 of interval as average is better ?*/
+	vl.time = time - plugin_get_interval() * query_interval;
+	filedata_dispatch_values(&vl, tsdb_name, tsdb_tags, first_value);
+
+skip:
+	vl.time = time;
+	status = filedata_init_instance_value(&(values[0]), type, value);
+	if (status)
+		goto out;
+	filedata_dispatch_values(&vl, tsdb_name, tsdb_tags, value);
 out:
 	meta_data_destroy(vl.meta);
 	vl.meta = NULL;
@@ -491,7 +539,7 @@ static int filedata_submit(struct filedata_submit *submit,
 			   const char *ext_tsdb_tags,
 			   int ext_tags_used,
 			   struct filedata_definition *fd,
-			   cdtime_t time)
+			   cdtime_t time, int query_interval)
 {
 	char host[MAX_SUBMIT_STRING_LENGTH];
 	char plugin[MAX_SUBMIT_STRING_LENGTH];
@@ -503,6 +551,12 @@ static int filedata_submit(struct filedata_submit *submit,
 	int status;
 	int n;
 	const char *ext_tags = fd->extra_tags;
+	uint64_t first_value = field_types[content_index]->fft_first_value;
+	bool fill_first_value = false;
+
+	if (field_types[content_index]->fft_flags &
+		FILEDATA_FIELD_FLAG_FILL_FIRST_VALUE)
+		fill_first_value = true;
 
 	status = filedata_submit_option_get(&submit->fs_host,
 					    path_head, field_types,
@@ -618,13 +672,15 @@ static int filedata_submit(struct filedata_submit *submit,
 	filedata_instance_submit(host, plugin, plugin_instance,
 				 type, type_instance,
 				 tsdb_name, tsdb_tags,
-				 value, time);
+				 value, time, fill_first_value, first_value,
+				 query_interval);
 	return status;
 }
 
 static int filedata_data_submit(struct filedata_item_type *type,
 				struct list_head *path_head,
-				struct filedata_item_data *data)
+				struct filedata_item_data *data,
+				struct filedata_item *item)
 {
 	int i;
 
@@ -642,7 +698,8 @@ static int filedata_data_submit(struct filedata_item_type *type,
 					data->fid_ext_tags,
 					data->fid_ext_tags_used,
 					type->fit_definition,
-					data->fid_query_time);
+					data->fid_query_time,
+					item->fi_query_interval);
 	}
 
 	return 0;
@@ -868,6 +925,7 @@ static int _filedata_parse(struct filedata_item_type *type,
 	char string[MAX_JOBSTAT_FIELD_LENGTH];
 	unsigned long long value;
 	int status = 0;
+	struct filedata_item *ret_item = NULL;
 
 	fields = calloc(type->fit_field_number + 1, sizeof(regmatch_t));
 	if (fields == NULL) {
@@ -938,10 +996,11 @@ static int _filedata_parse(struct filedata_item_type *type,
 
 		if (filedata_item_match(data->fid_fields,
 					type->fit_field_number,
-					type)) {
+					type, &ret_item)) {
 			status = filedata_item_extend_parse(type, data);
 			if (status == 0) {
-				filedata_data_submit(type, path_head, data);
+				filedata_data_submit(type, path_head, data,
+						     ret_item);
 			} else {
 				FINFO("Parse: failed to do extended parse");
 			}
@@ -1496,7 +1555,8 @@ filedata_submit_math_instance(struct filedata_entry *entry)
 						fme->fme_type_instance :
 						fhme->fhme_type_instance,
 						fme->fme_tsdb_name, tsdb_tags,
-						m_value, cdtime());
+						m_value, cdtime(),
+						false, 0, 1);
 			}
 			free(search_key);
 		}

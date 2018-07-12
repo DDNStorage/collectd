@@ -153,6 +153,7 @@ filedata_entry_free(struct filedata_entry *entry)
 #define FILEDATA_XML_FILE		"file"
 #define FILEDATA_XML_NAME		"name"
 #define FILEDATA_XML_TYPE		"type"
+#define FILEDATA_XML_FIRST_VALUE	"first_value"
 #define FILEDATA_XML_PATTERN		"pattern"
 #define FILEDATA_XML_FIELD		"field"
 #define FILEDATA_XML_INDEX		"index"
@@ -544,6 +545,7 @@ filedata_xml_field_parse(struct filedata_item_type *item, xmlNode *node)
 	int status = 0;
 	char *value;
 	struct filedata_field_type *field;
+	char *end_ptr;
 
 	field = filedata_field_type_alloc();
 	if (field == NULL) {
@@ -590,6 +592,17 @@ filedata_xml_field_parse(struct filedata_item_type *item, xmlNode *node)
 				break;
 			}
 			field->fft_flags |= FILEDATA_FIELD_FLAG_TYPE;
+			xmlFree(value);
+		} else if (strcmp((char *)tmp->name, FILEDATA_XML_FIRST_VALUE) == 0) {
+			value = (char *)xmlNodeGetContent(tmp);
+			field->fft_first_value = strtoull(value, &end_ptr, 10);
+			if (*end_ptr) {
+				FERROR("XML: first_value %s is illegal", value);
+				xmlFree(value);
+				status = -EINVAL;
+				break;
+			}
+			field->fft_flags |= FILEDATA_FIELD_FLAG_FILL_FIRST_VALUE;
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, FILEDATA_XML_OPTION) == 0) {
 			status = filedata_xml_option_parse(field, tmp->children);
