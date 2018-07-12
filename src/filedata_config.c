@@ -355,7 +355,8 @@ static int filedata_item_filter_match(struct filedata_field *fields,
 
 int filedata_item_match(struct filedata_field *fields,
 			int field_number,
-			struct filedata_item_type *type)
+			struct filedata_item_type *type,
+			struct filedata_item **ret_item)
 {
 	struct filedata_item *item;
 	int match = 0, res = 0;
@@ -371,6 +372,7 @@ int filedata_item_match(struct filedata_field *fields,
 						fields, field_number, item);
 			if (res) {
 				match = res;
+				*ret_item = item;
 			}
 		}
 	}
