@@ -236,7 +236,7 @@ static int filedata_extag_value_find(const char *extra_tags,
 	while (val < extra_tags + len && isspace(*val))
 		val++;
 
-	while (val < extra_tags + len && isalnum(*val)) {
+	while (val < extra_tags + len && isgraph(*val)) {
 		tag_value[count] = *val;
 		++count;
 		++val;
