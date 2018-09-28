@@ -551,8 +551,10 @@ static int filedata_submit(struct filedata_submit *submit,
 	uint64_t first_value = field_types[content_index]->fft_first_value;
 	bool fill_first_value = false;
 
-	if (field_types[content_index]->fft_flags &
-		FILEDATA_FIELD_FLAG_FILL_FIRST_VALUE)
+	/* don't fill first value if this is first time query */
+	if ((field_types[content_index]->fft_flags &
+		FILEDATA_FIELD_FLAG_FILL_FIRST_VALUE) &&
+	    fd->fd_query_times > 1)
 		fill_first_value = true;
 
 	status = filedata_submit_option_get(&submit->fs_host,
