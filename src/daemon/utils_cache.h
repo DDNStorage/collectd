@@ -30,6 +30,7 @@
 #define UTILS_CACHE_H 1
 
 #include "plugin.h"
+#include <stdbool.h>
 
 #define STATE_UNKNOWN 0
 #define STATE_OKAY 1
@@ -45,6 +46,7 @@ int uc_get_rate_by_name(const char *name, gauge_t **ret_values,
 gauge_t *uc_get_rate(const data_set_t *ds, const value_list_t *vl);
 int uc_get_value_by_name(const char *name, value_t **ret_values,
                          size_t *ret_values_num);
+bool uc_check_name_existed(const char *name);
 value_t *uc_get_value(const data_set_t *ds, const value_list_t *vl);
 
 size_t uc_get_size(void);

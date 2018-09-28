@@ -99,8 +99,6 @@ static void filedata_instance_submit(const char *host,
 	value_list_t vl = VALUE_LIST_INIT;
 	int status;
 	char name[6 * DATA_MAX_NAME_LEN];
-	size_t v_num;
-	value_t *vs;
 
 	vl.meta = meta_data_create();
 	if (vl.meta == NULL) {
@@ -134,10 +132,9 @@ static void filedata_instance_submit(const char *host,
 		FERROR("Submit: FORMAT_VL failed.");
 		goto out;
 	}
-	
+
 	/* if found means this is not first inserting */
-	status = uc_get_value_by_name(name, &vs, &v_num);
-	if (status == 0)
+	if (uc_check_name_existed(name))
 		goto skip;
 
 	status = filedata_init_instance_value(&(values[0]), type, first_value);

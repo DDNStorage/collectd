@@ -552,6 +552,25 @@ int uc_get_value_by_name(const char *name, value_t **ret_values,
   return (status);
 } /* int uc_get_value_by_name */
 
+bool uc_check_name_existed(const char *name) {
+
+	cache_entry_t *ce = NULL;
+	bool existed = false;
+
+	pthread_mutex_lock(&cache_lock);
+	if (c_avl_get(cache_tree, name, (void *)&ce) == 0) {
+		assert(ce != NULL);
+		/* remove missing values from getval */
+		if (ce->state != STATE_MISSING)
+			existed = true;
+	} else {
+		DEBUG("utils_cache: uc_get_value_by_name: No such value: %s", name);
+	}
+	pthread_mutex_unlock(&cache_lock);
+
+	return existed;
+} /* int uc_check_name_existed */
+
 value_t *uc_get_value(const data_set_t *ds, const value_list_t *vl) {
   char name[6 * DATA_MAX_NAME_LEN];
   value_t *ret = NULL;
