@@ -137,7 +137,7 @@ LoadPlugin ssh
 	UserName "user"
 	UserPassword "user"
 	SshTerminator "SFA14KX RAID[0]$"
-     <ServerHost>
+     </ServerHost>
   </Common>
   <Item>
     Type "vd_c_rates"
