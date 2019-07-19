@@ -1129,7 +1129,6 @@ static int filedata_read_file(const char *path, char **buf, ssize_t *data_size)
 	int bufsize = START_FILE_SIZE;
 	char *filebuf;
 	char *pointer;
-	struct stat st;
 	int status;
 	int fd;
 	char *tmp;
@@ -1142,20 +1141,15 @@ static int filedata_read_file(const char *path, char **buf, ssize_t *data_size)
 		ERROR("jobstat: failed to allocate memory");
 		return -1;
 	}
+
 	pointer = filebuf;
 	left_size = bufsize;
-
-	status = stat(path, &st);
-	if (status) {
-		ERROR("failed to stat %s", path);
-		goto err;
-	}
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
 		ERROR("failed to open %s", path);
-		status = -1;
-		goto err;
+		free(filebuf);
+		return -1;
 	}
 
 read_again:
@@ -1199,6 +1193,7 @@ read_again:
 	      bufsize, offset, strlen(filebuf));
 	return 0;
 err:
+	close(fd);
 	free(filebuf);
 	return status;
 }
