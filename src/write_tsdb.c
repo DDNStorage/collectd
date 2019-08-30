@@ -221,6 +221,7 @@ static int wt_callback_init(struct wt_callback *cb) {
     struct addrinfo ai_hints = {
         .ai_family = AF_UNSPEC,
         .ai_flags = AI_ADDRCONFIG,
+	.ai_protocol = IPPROTO_TCP,
         .ai_socktype = SOCK_STREAM,
     };
 
