@@ -295,20 +295,22 @@ int swrite(int fd, const void *buf, size_t count) {
   size_t nleft;
   ssize_t status;
   struct pollfd pfd;
+  int ret;
 
   ptr = (const char *)buf;
   nleft = count;
 
   if (fd < 0) {
     errno = EINVAL;
-    return errno;
+    return -errno;
   }
 
   /* checking for closed peer connection */
   pfd.fd = fd;
   pfd.events = POLLIN | POLLHUP;
   pfd.revents = 0;
-  if (poll(&pfd, 1, 0) > 0) {
+  ret = poll(&pfd, 1 , 0);
+  if (ret > 0) {
     char buffer[32];
     if (recv(fd, buffer, sizeof(buffer), MSG_PEEK | MSG_DONTWAIT) == 0) {
       /* if recv returns zero (even though poll() said there is data to be
@@ -316,6 +318,9 @@ int swrite(int fd, const void *buf, size_t count) {
       errno = ECONNRESET;
       return -1;
     }
+  } else if (ret < 0){
+	ERROR("common: poll failed: %s", strerror(errno));
+	return -errno;
   }
 
   while (nleft > 0) {
@@ -325,7 +330,7 @@ int swrite(int fd, const void *buf, size_t count) {
       continue;
 
     if (status < 0)
-      return errno ? errno : status;
+      return errno ? -errno : status;
 
     nleft = nleft - ((size_t)status);
     ptr = ptr + ((size_t)status);
