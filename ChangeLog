@@ -1,3 +1,5 @@
+2020-03-13, Version 5.7.3
+	* Build system: Bump version to upgrade from 5.7.2 (DDN only)
 2017-06-06, Version 5.7.2
 	* Build system: The Notify Email plugin is no longer linked with
 	  indirect dependencies. Thanks to Marc Fournier.
