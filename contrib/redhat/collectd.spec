@@ -257,7 +257,7 @@
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.7.2.g%{?rev}.ddn
+Version:	5.7.3.g%{?rev}.ddn
 Release:	8%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
