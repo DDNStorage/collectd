@@ -20,7 +20,7 @@
  **/
 
 #include "collectd.h"
-#include "common.h"
+#include "utils/common/common.h"
 #include "plugin.h"
 #include "list.h"
 #include <pthread.h>

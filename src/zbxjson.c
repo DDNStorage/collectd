@@ -1,6 +1,6 @@
 #include "collectd.h"
 #include "liboconfig/oconfig.h"
-#include "common.h"
+#include "utils/common/common.h"
 #include "plugin.h"
 #include "configfile.h"
 #include "zbxjson.h"

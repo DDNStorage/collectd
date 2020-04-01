@@ -21,7 +21,7 @@
 
 #include <string.h>
 #include "collectd.h"
-#include "common.h"
+#include "utils/common/common.h"
 #include "plugin.h"
 #include "filedata_config.h"
 #include "filedata_read.h"

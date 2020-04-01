@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "collectd.h"
-#include "common.h"
+#include "utils/common/common.h"
 #include "plugin.h"
 #include "syslog.h"
 #include "collectd.h"
