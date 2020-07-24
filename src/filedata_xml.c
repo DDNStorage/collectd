@@ -689,13 +689,15 @@ filedata_xml_item_parse(struct filedata_entry *entry, xmlNode *node)
 			xmlFree(value);
 		} else if (strcmp((char *)tmp->name, FILEDATA_XML_PATTERN) == 0) {
 			value = (char*)xmlNodeGetContent(tmp);
-			if (strlen(value) > MAX_NAME_LENGH) {
-				status = -1;
-				FERROR("XML: pattern %s is too long", value);
+			free(item->fit_pattern);
+			item->fit_pattern = strdup(value);
+			if (!item->fit_pattern) {
+				FERROR("XML: failed to allocate memory fit_pattern: %s",
+					value);
 				xmlFree(value);
+				status = -ENOMEM;
 				break;
 			}
-			strncpy(item->fit_pattern, value, MAX_NAME_LENGH);
 			xmlFree(value);
 			status = filedata_compile_regex(&item->fit_regex,
 							item->fit_pattern);

@@ -157,7 +157,7 @@ struct filedata_item_type {
 	/* Pointer to entry */
 	struct filedata_entry			 *fit_entry;
 	/* String of regular expression to match the item */
-	char					  fit_pattern[MAX_NAME_LENGH + 1];
+	char					 *fit_pattern;
 	/* Compiled regular expression to match the item */
 	regex_t				 	  fit_regex;
 	/* String of regular expression to match the context */
