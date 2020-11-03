@@ -17,6 +17,6 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install dependencies
       run: |
-        yum -y install epel-release redhat-lsb flex bison rpm-build
+        yum -y install epel-release redhat-lsb flex bison rpm-build automake libtool
     - name: Build
       run: ./build.sh
