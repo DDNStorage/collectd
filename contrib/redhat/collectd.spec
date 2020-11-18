@@ -255,12 +255,12 @@
 %define with_xmms 0
 %endif
 
-%define build_timestamp %(date +"%%Y%%m%%d%%H%%M%%S")
+%define build_timestamp %(date +%s)
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.7.3
-Release:	8.%{?build_timestamp}.g%{?rev}.ddn%{?dist}
+Version:	5.7.3.%{?build_timestamp}.ddn
+Release:	8.g%{?rev}.%{?dist}
 URL:		https://collectd.org
 Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
 License:	GPLv2
