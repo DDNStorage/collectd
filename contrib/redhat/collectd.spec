@@ -255,7 +255,6 @@
 %define with_xmms 0
 %endif
 
-%define build_timestamp %(date +%s)
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
