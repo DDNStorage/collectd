@@ -96,6 +96,8 @@ struct wt_callback {
   _Bool connect_failed_log_enabled;
   int connect_dns_failed_attempts_remaining;
   cdtime_t next_random_ttl;
+  uint64_t connect_interval;
+  uint64_t last_connect_timestamp;
 };
 
 static cdtime_t resolve_interval = 0;
@@ -166,8 +168,6 @@ static cdtime_t new_random_ttl() {
 
 #define MAX_CONNECT_INTERVAL	60
 #define DEFAULT_CONNECT_INTERVAL	1
-uint64_t connect_interval = DEFAULT_CONNECT_INTERVAL;
-uint64_t last_connect_timestamp = 0;
 
 uint64_t current_timestamp(void )
 {
@@ -227,12 +227,12 @@ static int wt_callback_init(struct wt_callback *cb) {
     };
 
     if (current_timestamp() <
-        last_connect_timestamp + connect_interval * 1000000)
+        cb->last_connect_timestamp + cb->connect_interval * 1000000)
       return -EAGAIN;
 
-    last_connect_timestamp = current_timestamp();
-    connect_interval = connect_interval >= MAX_CONNECT_INTERVAL ?
-		       MAX_CONNECT_INTERVAL : (connect_interval * 2);
+    cb->last_connect_timestamp = current_timestamp();
+    cb->connect_interval = cb->connect_interval >= MAX_CONNECT_INTERVAL ?
+		       MAX_CONNECT_INTERVAL : (cb->connect_interval * 2);
 
     status = getaddrinfo(node, service, &ai_hints, &cb->ai);
     if (status != 0) {
@@ -280,7 +280,7 @@ static int wt_callback_init(struct wt_callback *cb) {
     cb->connect_failed_log_enabled = 1;
   }
   cb->connect_dns_failed_attempts_remaining = 1;
-  connect_interval = DEFAULT_CONNECT_INTERVAL;
+  cb->connect_interval = DEFAULT_CONNECT_INTERVAL;
   wt_reset_buffer(cb);
 
   return 0;
@@ -629,6 +629,8 @@ static int wt_config_tsd(oconfig_item_t *ci) {
   cb->sock_fd = -1;
   cb->connect_failed_log_enabled = 1;
   cb->next_random_ttl = new_random_ttl();
+  cb->connect_interval = DEFAULT_CONNECT_INTERVAL;
+  cb->last_connect_timestamp = 0;
 
   pthread_mutex_init(&cb->send_lock, NULL);
 
