@@ -141,7 +141,6 @@
 @BUILD_PLUGIN_LOAD_TRUE@@BUILD_PLUGIN_LOAD_TRUE@LoadPlugin load
 #@BUILD_PLUGIN_LPAR_TRUE@LoadPlugin lpar
 #@BUILD_PLUGIN_LUA_TRUE@LoadPlugin lua
-#@BUILD_PLUGIN_LVM_TRUE@LoadPlugin lvm
 #@BUILD_PLUGIN_MADWIFI_TRUE@LoadPlugin madwifi
 #@BUILD_PLUGIN_MBMON_TRUE@LoadPlugin mbmon
 #@BUILD_PLUGIN_MCELOG_TRUE@LoadPlugin mcelog
@@ -1506,26 +1505,30 @@
 #   so by using <Instance "myinstance">
 #   <Instance>
 #      CollectBackend true
-#      CollectBan false           # Varnish 3 and above
+#      CollectBan false
 #      CollectCache true
 #      CollectConnections true
-#      CollectDirectorDNS false   # Varnish 3 only
 #      CollectESI false
 #      CollectFetch false
 #      CollectHCB false
 #      CollectObjects false
-#      CollectPurge false         # Varnish 2 only
 #      CollectSession false
 #      CollectSHM true
-#      CollectSMA false           # Varnish 2 only
+#      CollectSMA false
 #      CollectSMS false
-#      CollectSM false            # Varnish 2 only
 #      CollectStruct false
 #      CollectTotals false
-#      CollectUptime false        # Varnish 3 and above
+#      CollectUptime false
 #      CollectVCL false
 #      CollectVSM false           # Varnish 4 only
 #      CollectWorkers false
+#      CollectLock false
+#      CollectMempool false
+#      CollectManagement false
+#      CollectSMF false
+#      CollectVBE false
+#      CollectMSE false           # Varnish-Plus only
+#      CollectGOTO false           # Varnish-Plus 6 only
 #   </Instance>
 #</Plugin>
 

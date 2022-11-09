@@ -102,7 +102,7 @@ static int ime_read_file(const char *path, char **buf, ssize_t *data_size,
 	int ret;
 
 	/* Prepare request command, skipping leading / */
-	snprintf(cmd, sizeof(cmd), IME_PATH_PREFIX"/ime-monitor -s %s %s\n",
+	ssnprintf(cmd, sizeof(cmd), IME_PATH_PREFIX"/ime-monitor -s %s %s\n",
 		 pool_index, path + 1);
 
 	INFO("ime command: \"%s\"\n", cmd);

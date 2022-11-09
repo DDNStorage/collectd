@@ -8264,7 +8264,6 @@ Synopsis:
      CollectBan         false
      CollectCache       true
      CollectConnections true
-     CollectDirectorDNS false
      CollectESI         false
      CollectFetch       false
      CollectHCB         false
@@ -8274,7 +8273,6 @@ Synopsis:
      CollectSHM         true
      CollectSMA         false
      CollectSMS         false
-     CollectSM          false
      CollectStruct      false
      CollectTotals      false
      CollectUptime      false
@@ -8311,11 +8309,6 @@ Cache hits and misses. True by default.
 =item B<CollectConnections> B<true>|B<false>
 
 Number of client connections received, accepted and dropped. True by default.
-
-=item B<CollectDirectorDNS> B<true>|B<false>
-
-DNS director lookup cache statistics. Only available with Varnish 3.x. False by
-default.
 
 =item B<CollectESI> B<true>|B<false>
 
@@ -8396,6 +8389,10 @@ statistics subsystems). Only available with Varnish 4.x. False by default.
 =item B<CollectWorkers> B<true>|B<false>
 
 Collect statistics about worker threads. False by default.
+
+=item B<CollectGOTO> B<true>|B<false>
+
+vmod-goto counters. Only available with Varnish Plus 6.x. False by default.
 
 =back
 

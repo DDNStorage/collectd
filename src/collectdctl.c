@@ -1,6 +1,6 @@
 /**
  * collectd - src/collectdctl.c
- * Copyright (C) 2010 Håkon J Dugstad Johnsen
+ * Copyright (C) 2010 Hï¿½kon J Dugstad Johnsen
  * Copyright (C) 2010 Sebastian Harl
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -17,7 +17,7 @@
  * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  *
  * Authors:
- *   Håkon J Dugstad Johnsen <hakon-dugstad.johnsen at telenor.com>
+ *   Hï¿½kon J Dugstad Johnsen <hakon-dugstad.johnsen at telenor.com>
  *   Sebastian "tokkee" Harl <sh@tokkee.org>
  **/
 
@@ -25,6 +25,7 @@
 #include "config.h"
 #endif
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,6 +80,23 @@
 
 extern char *optarg;
 extern int optind;
+
+
+/* ssnprintf returns zero on success, one if truncation occurred
+   and a negative integer onerror. */
+static int _ssnprintf(char *str, size_t sz, const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+
+  int ret = vsnprintf(str, sz, format, ap);
+
+  va_end(ap);
+
+  if (ret < 0) {
+    return ret;
+  }
+  return (size_t)ret >= sz;
+} /* int _ssnprintf */
 
 __attribute__((noreturn)) static void exit_usage(const char *name, int status) {
   fprintf(
@@ -166,7 +184,7 @@ static int parse_identifier(lcc_connection_t *c, const char *value,
     }
     hostname[sizeof(hostname) - 1] = '\0';
 
-    snprintf(ident_str, sizeof(ident_str), "%s/%s", hostname, value);
+    _ssnprintf(ident_str, sizeof(ident_str), "%s/%s", hostname, value);
     ident_str[sizeof(ident_str) - 1] = '\0';
   } else {
     strncpy(ident_str, value, sizeof(ident_str));
@@ -543,7 +561,7 @@ int main(int argc, char **argv) {
 
     switch (opt) {
     case 's':
-      snprintf(address, sizeof(address), "unix:%s", optarg);
+      _ssnprintf(address, sizeof(address), "unix:%s", optarg);
       address[sizeof(address) - 1] = '\0';
       break;
     case 'h':

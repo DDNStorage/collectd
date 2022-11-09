@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include "list.h"
 #include "liboconfig/oconfig.h"
-#include <uthash.h>
+#include "uthash.h"
 #include <stdbool.h>
 
 #define MAX_NAME_LENGH 1024

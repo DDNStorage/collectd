@@ -270,7 +270,7 @@ static int stress_key_field_get(char *field, size_t size, const char *name)
 			      hostname_g);
 			return -1;
 		} else {
-			strncpy(field, hostname_g, size - 1);
+			sstrncpy(field, hostname_g, size - 1);
 		}
 	}
 
@@ -290,12 +290,12 @@ static int stress_variable_field_get(char *field, size_t size, const char *name,
 
 	if (strcmp(name, "hostname") == 0) {
 		if (strlen(hostname_g) >= size) {
-			strncpy(field, hostname_g, size - 1);
+			sstrncpy(field, hostname_g, size - 1);
 			field[size - 1] = '\0';
 			WARNING("stress2: hostname: %s is too long, "
 				"truncate it to: \"%s\"", hostname_g, field);
 		} else {
-			strncpy(field, hostname_g, size - 1);
+			sstrncpy(field, hostname_g, size - 1);
 		}
 	}
 
@@ -313,7 +313,7 @@ static int stress_variable_field_get(char *field, size_t size, const char *name,
 				ERROR("stress2: variable is too long");
 				return -1;
 			} else {
-				strncpy(field, variable_value, size - 1);
+				sstrncpy(field, variable_value, size - 1);
 			}
 			return 0;
 		}
@@ -362,7 +362,7 @@ static int stress_string_translate(const char *origin_string,
 				status = -EINVAL;
 				break;
 			}
-			strncpy(value_pointer, pointer, max_size);
+			sstrncpy(value_pointer, pointer, max_size);
 			value_pointer += strlen(pointer);
 			max_size -= strlen(pointer);
 			status = 0;
@@ -387,11 +387,11 @@ static int stress_string_translate(const char *origin_string,
 			}
 
 			if (i == 1) {
-				strncpy(type, origin_string + start,
+				sstrncpy(type, origin_string + start,
 					finish - start);
 				type[finish - start] = '\0';
 			} else if (i == 2) {
-				strncpy(name, origin_string + start,
+				sstrncpy(name, origin_string + start,
 					finish - start);
 				name[finish - start] = '\0';
 			}
@@ -448,14 +448,14 @@ static int stress_string_translate(const char *origin_string,
 		}
 
 		if (matched_fields[0].rm_so > 0) {
-			strncpy(value_pointer, pointer,
+			sstrncpy(value_pointer, pointer,
 				matched_fields[0].rm_so);
 			value_pointer += matched_fields[0].rm_so;
 			value_pointer[0] = '\0';
 			max_size -= matched_fields[0].rm_so;
 		}
 
-		strncpy(value_pointer, match_value, max_size);
+		sstrncpy(value_pointer, match_value, max_size);
 		value_pointer += strlen(match_value);
 		max_size -= strlen(match_value);
 		match_value = NULL;
