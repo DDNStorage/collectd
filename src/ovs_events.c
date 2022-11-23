@@ -253,8 +253,12 @@ static int ovs_events_plugin_config(oconfig_item_t *ci) {
         ovs_events_config_free();
         return -1;
       }
-      strncpy(ovs_events_ctx.config.ovs_db_serv, service,
-              sizeof(ovs_events_ctx.config.ovs_db_serv));
+      if (sizeof(ovs_events_ctx.config.ovs_db_serv) < sizeof(service)) {
+       ovs_events_config_free();
+       sfree(service);
+       return -1;
+      }
+      strcpy(ovs_events_ctx.config.ovs_db_serv, service);
       sfree(service);
     } else if (strcasecmp("Socket", child->key) == 0) {
       if (cf_util_get_string_buffer(

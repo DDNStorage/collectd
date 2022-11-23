@@ -25,7 +25,7 @@ COLLECTD_RPM_NAMES = ["collectd", "collectd-disk", "collectd-filedata",
 
 def collectd_build(workspace, build_host, base_path,
                    collectd_git_path,
-                   collectd_tarball_name, distro_number, target_cpu):
+                   collectd_tarball_name, distro_number):
     """
     Build Collectd on a host
     """
@@ -42,7 +42,7 @@ def collectd_build(workspace, build_host, base_path,
                       collectd_git_path, workspace,
                       build_host.sh_hostname)
         return -1
-      
+
     command = ("cd %s && chmod u+x version-gen.sh" %
                (host_collectd_git_dir))
     retval = build_host.sh_run(command)
@@ -169,7 +169,7 @@ def collectd_build_check(workspace, build_host, base_path, collectd_git_path,
     # pylint: disable=too-many-arguments,too-many-return-statements
     # pylint: disable=too-many-statements,too-many-branches,too-many-locals
     local_rpm_dir = ("%s/%s" %
-                            (base_path, RPM_STRING))
+                     (base_path, RPM_STRING))
     command = ("mkdir -p %s && ls %s" %
                (local_rpm_dir, local_rpm_dir))
     retval = build_host.sh_run(command)
@@ -214,7 +214,7 @@ def collectd_build_check(workspace, build_host, base_path, collectd_git_path,
     if not found:
         ret = collectd_build(workspace, build_host, base_path, collectd_git_path,
                              collectd_tarball_name,
-                             distro_number, target_cpu)
+                             distro_number)
         if ret:
             logging.error("failed to build Collectd on host [%s]",
                           build_host.sh_hostname)
@@ -281,7 +281,7 @@ def collectd_build_check(workspace, build_host, base_path, collectd_git_path,
 
 
 def collectd_host_build(workspace, build_host, base_path, collectd_git_path,
-               collectd_version_release, collectd_tarball_name):
+                        collectd_version_release, collectd_tarball_name):
     """
     Build on host
     """
@@ -388,7 +388,7 @@ def collectd_host_build(workspace, build_host, base_path, collectd_git_path,
                                collectd_version_release, collectd_tarball_name, distro, target_cpu)
     if ret:
         logging.error("failed to build collectd_build_check on host [%s]",
-                          build_host.sh_hostname)
+                      build_host.sh_hostname)
         return -1
 
     return 0
@@ -399,10 +399,10 @@ def collecd_build_prepare(current_dir, relative_workspace):
     """
     # pylint: disable=too-many-locals,too-many-return-statements
     # pylint: disable=too-many-branches,too-many-statements
-    
+
     build_host = ssh_host.SSHHost("localhost", local=True)
     distro = build_host.sh_distro()
-    if distro != ssh_host.DISTRO_RHEL7 and distro != ssh_host.DISTRO_RHEL8:
+    if distro not in (ssh_host.DISTRO_RHEL7, ssh_host.DISTRO_RHEL8):
         logging.error("build can only be launched on RHEL7/CentOS7/RHEL8/CentOS8 host")
         return -1
 
@@ -414,16 +414,16 @@ def collecd_build_prepare(current_dir, relative_workspace):
 
     collectd_git_path = current_dir + "/../" + "collectd.git"
 
-    # collectd_git_url = "https://github.com/ayush-ddn/collectd-testing.git"
-    collectd_git_url = "https://github.com/DDNStorage/collectd.git"
+    collectd_git_url = "https://github.com/ayush-ddn/collectd.git"
+    # collectd_git_url = "https://github.com/DDNStorage/collectd.git"
     logging.info("using git url [%s]", collectd_git_url)
 
-    # collectd_git_branch = "main"
-    collectd_git_branch = "master-ddn"
+    collectd_git_branch = "MOM-23178"
+    # collectd_git_branch = "master-ddn"
     logging.info("using git branch [%s]", collectd_git_branch)
 
     ret = common.clone_src_from_git(collectd_git_path, collectd_git_url,
-                                          collectd_git_branch)
+                                    collectd_git_branch)
     if ret:
         logging.error("failed to clone Collectd branch [%s] from [%s] to "
                       "directory [%s]", collectd_git_branch,
@@ -483,7 +483,7 @@ def collecd_build_prepare(current_dir, relative_workspace):
     # host
     local_workspace = current_dir + "/" + relative_workspace
     ret = collectd_host_build(local_workspace, build_host, current_dir, collectd_git_path,
-                     collectd_version_release, collectd_tarball_name)
+                              collectd_version_release, collectd_tarball_name)
     if ret:
         logging.error("failed to prepare RPMs on local host")
         return -1

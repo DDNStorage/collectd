@@ -509,7 +509,12 @@ filedata_xml_option_parse(struct filedata_field_type *field, xmlNode *node)
 				break;
 			}
 			value = (char*)xmlNodeGetContent(tmp);
-			strncpy(string, value, 1024);
+                        if (strlen(value) > 1024) {
+                                FERROR("String too long");
+                                xmlFree(value);
+                                return -1;
+                        }
+                        strcpy(string, value);
 			xmlFree(value);
 			inited = 1;
 		} else {

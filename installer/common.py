@@ -64,19 +64,19 @@ def clone_src_from_git(build_dir, git_url, branch,
 #
 # libyaml is needed by PyYAML.
 ES_INSTALL_DEPENDENT_RPMS = ["rsync",
-                                "python-chardet",
-                                "python-backports",
-                                "python-ipaddress",
-                                "python-backports-ssl_match_hostname",
-                                "python-six",
-                                "python-urllib3",
-                                "libyaml",
-                                "PyYAML",
-                                "python-requests",
-                                "python-filelock",
-                                "python-slugify",
-                                "pytz",
-                                "python-dateutil"]
+                             "python-chardet",
+                             "python-backports",
+                             "python-ipaddress",
+                             "python-backports-ssl_match_hostname",
+                             "python-six",
+                             "python-urllib3",
+                             "libyaml",
+                             "PyYAML",
+                             "python-requests",
+                             "python-filelock",
+                             "python-slugify",
+                             "pytz",
+                             "python-dateutil"]
 
 # patch is needed to patch /etc/influxdb/influxdb.conf file
 # fontconfig and urw-base35-fonts are needed by grafana rpm
@@ -86,9 +86,9 @@ ES_INSTALL_DEPENDENT_RPMS = ["rsync",
 # libXfont is needed by xorg-x11-font-utils
 # libfontenc is needed by libXfont
 ES_SERVER_DEPENDENT_RPMS = ["rsync", "patch", "fontpackages-filesystem",
-                               "bitmap-console-fonts", "fontconfig",
-                               "libfontenc", "libXfont",
-                               "xorg-x11-font-utils", "urw-base35-fonts"]
+                            "bitmap-console-fonts", "fontconfig",
+                            "libfontenc", "libXfont",
+                            "xorg-x11-font-utils", "urw-base35-fonts"]
 
 
 # yajl is needed by collectd
@@ -97,4 +97,6 @@ ES_SERVER_DEPENDENT_RPMS = ["rsync", "patch", "fontpackages-filesystem",
 # openpgm is needed by zeromq3
 # libmnl is needed by collectd
 ES_CLIENT_DEPENDENT_RPMS = ["rsync", "yajl", "lm_sensors-libs",
-                               "openpgm", "zeromq3", "libmnl", "autoconf", "automake", "flex", "bison", "libtool", "pkg-config", "python3-devel"]
+                            "openpgm", "zeromq3", "libmnl", "autoconf",
+                            "automake", "flex", "bison", "libtool",
+                            "pkg-config", "python3-devel"]

@@ -529,12 +529,12 @@ static inline char* filedata_check_extra_tags(char *extra_tags)
 		n = MAX_TSDB_TAGS_LENGTH - strlen(ret_p) - 1;
 		if (ret == 0) {
 			if (n > strlen(key_point)) {
-				strncat(ret_p, key_point, strlen(key_point));
+				strcat(ret_p, key_point);
 			} else {
 				FERROR("Common: ignore max buffer");
 				break;
 			}
-			strncat(ret_p, " ", 1);
+			strcat(ret_p, " ");
 		} else {
 			FERROR("Common: ignore invalid extra tag: %s",
 			       key_point);
@@ -1132,7 +1132,12 @@ static int filedata_config_option(const oconfig_item_t *ci,
 				       " of \"%s\"", child->key);
 				break;
 			}
-			strncpy(string, value, 1024);
+                        if (strlen(value) > 1024) {
+                                FERROR("String too long");
+                                free(value);
+                                return -1;
+                        }
+			strcpy(string, value);
 			free(value);
 			inited = 1;
 		} else {
