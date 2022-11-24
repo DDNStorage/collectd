@@ -414,12 +414,12 @@ def collecd_build_prepare(current_dir, relative_workspace):
 
     collectd_git_path = current_dir + "/../" + "collectd.git"
 
-    collectd_git_url = "https://github.com/ayush-ddn/collectd.git"
-    # collectd_git_url = "https://github.com/DDNStorage/collectd.git"
+    # collectd_git_url = "https://github.com/ayush-ddn/collectd.git"
+    collectd_git_url = "https://github.com/DDNStorage/collectd.git"
     logging.info("using git url [%s]", collectd_git_url)
 
-    collectd_git_branch = "MOM-23178"
-    # collectd_git_branch = "master-ddn"
+    # collectd_git_branch = "MOM-23178"
+    collectd_git_branch = "master-ddn"
     logging.info("using git branch [%s]", collectd_git_branch)
 
     ret = common.clone_src_from_git(collectd_git_path, collectd_git_url,
