@@ -551,7 +551,7 @@ static void init_value_list(value_list_t *vl, virDomainPtr dom) {
     n = DATA_MAX_NAME_LEN - strlen(vl->host) - 2;
 
     if (i > 0 && n >= 1) {
-      strncat(vl->host, ":", 1);
+      strcat(vl->host, ":");
       n--;
     }
 
@@ -583,7 +583,7 @@ static void init_value_list(value_list_t *vl, virDomainPtr dom) {
     n = sizeof(vl->plugin_instance) - strlen(vl->plugin_instance) - 2;
 
     if (i > 0 && n >= 1) {
-      strncat(vl->plugin_instance, ":", 1);
+      strcat(vl->plugin_instance, ":");
       n--;
     }
 

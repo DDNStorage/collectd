@@ -17,7 +17,6 @@ import re
 # local libs
 from installer import utils
 
-
 # OS distribution RHEL6/CentOS6
 DISTRO_RHEL6 = "rhel6"
 # OS distribution RHEL7/CentOS7
@@ -129,7 +128,7 @@ def ssh_run(hostname, command, login_name="root", timeout=None,
                      quit_func=quit_func, flush_tee=flush_tee)
 
 
-class SSHHost(object):
+class SSHHost:
     """
     Each SSH host has an object of SSHHost
     """
@@ -243,18 +242,16 @@ class SSHHost(object):
                               "failed to get the distro version",
                               command, self.sh_hostname)
                 return None
-            else:
-                if "el8" in ret.cr_stdout:
-                    self.sh_cached_distro = DISTRO_RHEL8
-                    return DISTRO_RHEL7
-                elif "el7" in ret.cr_stdout:
-                    self.sh_cached_distro = DISTRO_RHEL7
-                    return DISTRO_RHEL7
-                elif "el6" in ret.cr_stdout:
-                    self.sh_cached_distro = DISTRO_RHEL6
-                    return DISTRO_RHEL6
-                else:
-                    return None
+            if "el8" in ret.cr_stdout:
+                self.sh_cached_distro = DISTRO_RHEL8
+                return DISTRO_RHEL7
+            if "el7" in ret.cr_stdout:
+                self.sh_cached_distro = DISTRO_RHEL7
+                return DISTRO_RHEL7
+            if "el6" in ret.cr_stdout:
+                self.sh_cached_distro = DISTRO_RHEL6
+                return DISTRO_RHEL6
+            return None
 
         ret = self.sh_run("lsb_release -s -i")
         if ret.cr_exit_status != 0:
@@ -274,41 +271,37 @@ class SSHHost(object):
             return None
         version = ret.cr_stdout.strip('\n')
 
-        if (name == "RedHatEnterpriseServer" or
-                name == "ScientificSL" or
-                name == "CentOS" or
-                name == "AlmaLinux"):
+        if name in ("RedHatEnterpriseServer", "ScientificSL",
+                    "CentOS", "AlmaLinux"):
             if version.startswith("8"):
                 self.sh_cached_distro = DISTRO_RHEL8
                 return DISTRO_RHEL8
-            elif version.startswith("7"):
+            if version.startswith("7"):
                 self.sh_cached_distro = DISTRO_RHEL7
                 return DISTRO_RHEL7
-            elif version.startswith("6"):
+            if version.startswith("6"):
                 self.sh_cached_distro = DISTRO_RHEL6
                 return DISTRO_RHEL6
-            else:
-                logging.error("unsupported version [%s] of [%s] on host [%s]",
-                              version, "rhel", self.sh_hostname)
-                return None
-        elif name == "EnterpriseEnterpriseServer":
+            logging.error("unsupported version [%s] of [%s] on host [%s]",
+                          version, "rhel", self.sh_hostname)
+            return None
+        if name == "EnterpriseEnterpriseServer":
             logging.error("unsupported version [%s] of [%s] on host [%s]",
                           version, "oel", self.sh_hostname)
             return None
-        elif name == "SUSE LINUX":
+        if name == "SUSE LINUX":
             # PATCHLEVEL=$(sed -n -e 's/^PATCHLEVEL = //p' /etc/SuSE-release)
             # version="${version}.$PATCHLEVEL"
             logging.error("unsupported version [%s] of [%s] on host [%s]",
                           version, "sles", self.sh_hostname)
             return None
-        elif name == "Fedora":
+        if name == "Fedora":
             logging.error("unsupported version [%s] of [%s] on host [%s]",
                           version, "fc", self.sh_hostname)
             return None
-        else:
-            logging.error("unsupported version [%s] of [%s] on host [%s]",
-                          version, name, self.sh_hostname)
-            return None
+        logging.error("unsupported version [%s] of [%s] on host [%s]",
+                      version, name, self.sh_hostname)
+        return None
 
     def sh_prepare_user(self, name, uid, gid):
         """
@@ -498,9 +491,8 @@ class SSHHost(object):
         if is_local:
             return ["\"%s\"%s" % (sh_escape(path), pattern)
                     for pattern in patterns]
-        else:
-            return [scp_remote_escape(path) + pattern
-                    for pattern in patterns]
+        return [scp_remote_escape(path) + pattern
+                for pattern in patterns]
 
     def sh_make_scp_cmd(self, sources, dest):
         """
@@ -955,17 +947,15 @@ class SSHHost(object):
                               retval.cr_stderr)
                 return -1
             return 0
-        elif retval.cr_exit_status == 1:
+        if retval.cr_exit_status == 1:
             return 0
-        else:
-            logging.error("failed to run command [%s] on host [%s], "
-                          "ret = [%d], stdout = [%s], stderr = [%s]",
-                          command,
-                          self.sh_hostname,
-                          retval.cr_exit_status,
-                          retval.cr_stdout,
-                          retval.cr_stderr)
-            return -1
+        logging.error("failed to run command [%s] on host [%s], "
+                      "ret = [%d], stdout = [%s], stderr = [%s]",
+                      command,
+                      self.sh_hostname,
+                      retval.cr_exit_status,
+                      retval.cr_stdout,
+                      retval.cr_stderr)
         return -1
 
     def sh_device_umount_all(self, device):
@@ -1022,8 +1012,7 @@ class SSHHost(object):
                                   tmp_mount_point,
                                   tmp_fstype, fstype)
                     return -1
-                else:
-                    return 1
+                return 1
         return 0
 
     def sh_device_mounted(self, device):
@@ -1059,7 +1048,7 @@ class SSHHost(object):
         ret = self.sh_filesystem_mounted(device, fstype, mount_point)
         if ret == 1:
             return 0
-        elif ret < 0:
+        if ret < 0:
             return -1
 
         option_string = ""
@@ -1248,8 +1237,7 @@ class SSHHost(object):
             for character in line[pointer:]:
                 if character != " ":
                     break
-                else:
-                    pointer += 1
+                pointer += 1
 
             value = line[pointer:]
             info_dict[name] = value
@@ -1412,8 +1400,7 @@ class SSHHost(object):
             return retval.cr_exit_status
         if written == size:
             return 0
-        else:
-            return self.sh_truncate(fpath, size)
+        return self.sh_truncate(fpath, size)
 
     def sh_rpm_query(self, rpm_name):
         """
@@ -1575,7 +1562,7 @@ class SSHHost(object):
             return -1
 
         status = self.sh_selinux_status()
-        if status == "Disabled" or status == "Permissive":
+        if status in ("Disabled", "Permissive"):
             logging.debug("SELinux is already [%s] on host [%s]",
                           status, self.sh_hostname)
             return 0

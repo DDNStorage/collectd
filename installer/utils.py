@@ -20,6 +20,8 @@ import sys
 import random
 import string
 
+# pylint: disable=E1101
+
 LOG_INFO_FNAME = "info.log"
 LOGGING_HANLDERS = {}
 
@@ -93,9 +95,10 @@ def nuke_subprocess(subproc):
         signal_pid(subproc.pid, sig)
         if subproc.poll() is not None:
             return subproc.poll()
+    return subproc.poll()
 
 
-class CommandResult(object):
+class CommandResult:
     """
     All command will return a command result of this class
     """
@@ -108,7 +111,7 @@ class CommandResult(object):
         self.cr_duration = duration
 
 
-class CommandJob(object):
+class CommandJob:
     """
     Each running of a command has an object of this class
     """
@@ -160,13 +163,13 @@ class CommandJob(object):
         shell = '/bin/bash'
         try:
             self.cj_subprocess = subprocess.Popen(self.cj_command,
-                                                stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE,
-                                                shell=True,
-                                                executable=shell,
-                                                stdin=self.cj_stdin)
-        except:
-            logging.error("Failed self.cj_subprocess")
+                                                  stdout=subprocess.PIPE,
+                                                  stderr=subprocess.PIPE,
+                                                  shell=True,
+                                                  executable=shell,
+                                                  stdin=self.cj_stdin)
+        except subprocess.CalledProcessError as err:
+            logging.error("Failed self.cj_subprocess: [%s]", err.stderr)
         return 0
 
     def cj_run_stop(self):
