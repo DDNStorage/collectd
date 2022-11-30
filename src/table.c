@@ -392,7 +392,7 @@ static int tbl_result_dispatch(tbl_t *tbl, tbl_result_t *res, char **fields,
     if (NULL == res->instance_prefix)
       strncpy(vl.type_instance, instances_str, sizeof(vl.type_instance));
     else
-      snprintf(vl.type_instance, sizeof(vl.type_instance), "%s-%s",
+      ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%s-%s",
                res->instance_prefix, instances_str);
 
     if ('\0' != vl.type_instance[sizeof(vl.type_instance) - 1]) {

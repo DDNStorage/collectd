@@ -277,13 +277,13 @@ static int value_list_to_kairosdb(char *buffer, size_t buffer_size, /* {{{ */
           key_length++;
           pointer++;
       	}
-      	if (pointer == '\0') {
+      	if (*pointer == '\0') {
           ERROR("kairosdb: parsing tags get failure");
           sfree(meta_temp);
       	  return -1;
         }
       	pointer++;
-      	if (pointer == '\0') {
+      	if (*pointer == '\0') {
           ERROR("kairosdb: parsing tags get failure");
           sfree(meta_temp);
       	  return -1;

@@ -17,6 +17,8 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
+# pylint: disable=C0103
+
 """
 Simple unicast proxy for collectd (>= 4.0).
 Binds to 'local' address and forwards all traffic to 'remote'.
@@ -25,9 +27,10 @@ Binds to 'local' address and forwards all traffic to 'remote'.
 import socket
 import struct
 
-""" Local multicast group/port"""
-local  = ("239.192.74.66", 25826)
-""" Address to send packets """
+# Local multicast group/port
+local = ("239.192.74.66", 25826)
+
+# Address to send packets
 remote = ("grid.pp.ru", 35826)
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)

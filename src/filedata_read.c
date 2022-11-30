@@ -642,20 +642,17 @@ static int filedata_submit(struct filedata_submit *submit,
 		}
 
 		if (strlen(tsdb_tags) > 0) {
-			strncat(tsdb_tags, " ", 1);
-			strncat(tsdb_tags, ext_tsdb_tags,
-				MAX_TSDB_TAGS_LENGTH - 1);
+			strcat(tsdb_tags, " ");
+			strcat(tsdb_tags, ext_tsdb_tags);
 		} else {
-			strncpy(tsdb_tags, ext_tsdb_tags,
-				MAX_TSDB_TAGS_LENGTH - 1);
+			strcpy(tsdb_tags, ext_tsdb_tags);
 		}
 	}
 	n = MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags);
 	if (ext_tags && n > strlen(ext_tags) + 1) {
 		if (strlen(tsdb_tags) > 0)
-			strncat(tsdb_tags, " ", 1);
-		strncat(tsdb_tags, ext_tags,
-			MAX_TSDB_TAGS_LENGTH - 1 - strlen(tsdb_tags));
+			strcat(tsdb_tags, " ");
+		strcat(tsdb_tags, ext_tags);
 	} else if (ext_tags){
 		FERROR("submit: ignore overflow extra tsdb tags");
 	}

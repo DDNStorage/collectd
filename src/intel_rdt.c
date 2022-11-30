@@ -314,7 +314,7 @@ static void rdt_dump_cgroups(void) {
 
     memset(cores, 0, sizeof(cores));
     for (int j = 0; j < g_rdt->cgroups[i].num_cores; j++) {
-      snprintf(cores + strlen(cores), sizeof(cores) - strlen(cores) - 1, " %d",
+      ssnprintf(cores + strlen(cores), sizeof(cores) - strlen(cores) - 1, " %d",
                g_rdt->cgroups[i].cores[j]);
     }
 
@@ -375,7 +375,7 @@ static int rdt_default_cgroups(void) {
     char desc[DATA_MAX_NAME_LEN];
     uint64_t core = i;
 
-    snprintf(desc, sizeof(desc), "%d", g_rdt->pqos_cpu->cores[i].lcore);
+    ssnprintf(desc, sizeof(desc), "%d", g_rdt->pqos_cpu->cores[i].lcore);
 
     /* set core group info */
     ret = cgroup_set(&g_rdt->cgroups[i], desc, &core, 1);
@@ -585,7 +585,7 @@ static void rdt_submit_derive(char *cgroup, char *type, char *type_instance,
   vl.values_len = 1;
 
   sstrncpy(vl.plugin, RDT_PLUGIN, sizeof(vl.plugin));
-  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s", cgroup);
+  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s", cgroup);
   sstrncpy(vl.type, type, sizeof(vl.type));
   if (type_instance)
     sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
@@ -601,7 +601,7 @@ static void rdt_submit_gauge(char *cgroup, char *type, char *type_instance,
   vl.values_len = 1;
 
   sstrncpy(vl.plugin, RDT_PLUGIN, sizeof(vl.plugin));
-  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s", cgroup);
+  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s", cgroup);
   sstrncpy(vl.type, type, sizeof(vl.type));
   if (type_instance)
     sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));

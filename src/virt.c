@@ -551,7 +551,7 @@ static void init_value_list(value_list_t *vl, virDomainPtr dom) {
     n = DATA_MAX_NAME_LEN - strlen(vl->host) - 2;
 
     if (i > 0 && n >= 1) {
-      strncat(vl->host, ":", 1);
+      strcat(vl->host, ":");
       n--;
     }
 
@@ -583,7 +583,7 @@ static void init_value_list(value_list_t *vl, virDomainPtr dom) {
     n = sizeof(vl->plugin_instance) - strlen(vl->plugin_instance) - 2;
 
     if (i > 0 && n >= 1) {
-      strncat(vl->plugin_instance, ":", 1);
+      strcat(vl->plugin_instance, ":");
       n--;
     }
 
@@ -731,7 +731,7 @@ static void vcpu_submit(derive_t value, virDomainPtr dom, int vcpu_nr,
                         const char *type) {
   char type_instance[DATA_MAX_NAME_LEN];
 
-  snprintf(type_instance, sizeof(type_instance), "%d", vcpu_nr);
+  ssnprintf(type_instance, sizeof(type_instance), "%d", vcpu_nr);
   submit(dom, type, type_instance, &(value_t){.derive = value}, 1);
 }
 
@@ -752,7 +752,7 @@ static void disk_submit(struct lv_block_info *binfo, virDomainPtr dom,
   }
 
   char flush_type_instance[DATA_MAX_NAME_LEN];
-  snprintf(flush_type_instance, sizeof(flush_type_instance), "flush-%s",
+  ssnprintf(flush_type_instance, sizeof(flush_type_instance), "flush-%s",
            type_instance);
 
   if ((binfo->bi.rd_req != -1) && (binfo->bi.wr_req != -1))
@@ -828,7 +828,7 @@ static void domain_state_submit(virDomainPtr dom, int state, int reason) {
   const char *reason_str = "N/A";
 #endif
 
-  snprintf(msg, sizeof(msg), "Domain state: %s. Reason: %s", state_str,
+  ssnprintf(msg, sizeof(msg), "Domain state: %s. Reason: %s", state_str,
            reason_str);
 
   int severity;
@@ -1180,7 +1180,7 @@ static void vcpu_pin_submit(virDomainPtr dom, int max_cpus, int vcpu,
     char type_instance[DATA_MAX_NAME_LEN];
     _Bool is_set = VIR_CPU_USABLE(cpu_maps, cpu_map_len, vcpu, cpu) ? 1 : 0;
 
-    snprintf(type_instance, sizeof(type_instance), "vcpu_%d-cpu_%d", vcpu, cpu);
+    ssnprintf(type_instance, sizeof(type_instance), "vcpu_%d-cpu_%d", vcpu, cpu);
     submit(dom, "cpu_affinity", type_instance, &(value_t){.gauge = is_set}, 1);
   }
 }
@@ -1660,7 +1660,7 @@ static int lv_init_instance(size_t i, plugin_read_cb callback) {
 
   memset(lv_ud, 0, sizeof(*lv_ud));
 
-  snprintf(inst->tag, sizeof(inst->tag), "%s-%zu", PLUGIN_NAME, i);
+  ssnprintf(inst->tag, sizeof(inst->tag), "%s-%zu", PLUGIN_NAME, i);
   inst->id = i;
 
   user_data_t *ud = &(lv_ud->ud);
@@ -1720,7 +1720,7 @@ static int lv_domain_get_tag(xmlXPathContextPtr xpath_ctx, const char *dom_name,
     goto done;
   }
 
-  snprintf(xpath_str, sizeof(xpath_str), "/domain/metadata/%s:%s/text()",
+  ssnprintf(xpath_str, sizeof(xpath_str), "/domain/metadata/%s:%s/text()",
            METADATA_VM_PARTITION_PREFIX, METADATA_VM_PARTITION_ELEMENT);
   xpath_obj = xmlXPathEvalExpression((xmlChar *)xpath_str, xpath_ctx);
   if (xpath_obj == NULL) {
@@ -2121,7 +2121,7 @@ static int add_interface_device(struct lv_read_state *state, virDomainPtr dom,
     return -1;
   }
 
-  snprintf(number_string, sizeof(number_string), "interface-%u", number);
+  ssnprintf(number_string, sizeof(number_string), "interface-%u", number);
 
   if (state->interface_devices)
     new_ptr = realloc(state->interface_devices, new_size);
@@ -2156,7 +2156,7 @@ static int ignore_device_match(ignorelist_t *il, const char *domname,
     ERROR(PLUGIN_NAME " plugin: malloc failed.");
     return 0;
   }
-  snprintf(name, n, "%s:%s", domname, devpath);
+  ssnprintf(name, n, "%s:%s", domname, devpath);
   r = ignorelist_match(il, name);
   sfree(name);
   return r;

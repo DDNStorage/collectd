@@ -26,14 +26,14 @@
 #include <stdint.h>
 #include "list.h"
 #include "liboconfig/oconfig.h"
-#include <uthash.h>
+#include "uthash.h"
 #include <stdbool.h>
 
 #define MAX_NAME_LENGH 1024
 #define TYPE_NAME_LEN	64
 #define MAX_WRITE_LEN	64
 
-#define MAX_JOBSTAT_FIELD_LENGTH 32
+#define MAX_JOBSTAT_FIELD_LENGTH 64
 #define MAX_SUBMIT_STRING_LENGTH DATA_MAX_NAME_LEN
 /* There might be a lot of tags, which means a long string */
 #define MAX_TSDB_TAGS_LENGTH 1024

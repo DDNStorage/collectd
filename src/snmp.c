@@ -154,7 +154,7 @@ static int csnmp_oid_to_string(char *buffer, size_t buffer_size,
   char *oid_str_ptr[MAX_OID_LEN];
 
   for (size_t i = 0; i < o->oid_len; i++) {
-    snprintf(oid_str[i], sizeof(oid_str[i]), "%lu", (unsigned long)o->oid[i]);
+    ssnprintf(oid_str[i], sizeof(oid_str[i]), "%lu", (unsigned long)o->oid[i]);
     oid_str_ptr[i] = oid_str[i];
   }
 
@@ -702,7 +702,7 @@ static int csnmp_config_add_host(oconfig_item_t *ci) {
         "= %i }",
         hd->name, hd->address, hd->community, hd->version);
 
-  snprintf(cb_name, sizeof(cb_name), "snmp-%s", hd->name);
+  ssnprintf(cb_name, sizeof(cb_name), "snmp-%s", hd->name);
 
   status = plugin_register_complex_read(
       /* group = */ NULL, cb_name, csnmp_read_host, hd->interval,
@@ -962,7 +962,7 @@ static int csnmp_strvbcopy_hexstring(char *dst, /* {{{ */
   for (size_t i = 0; i < vb->val_len; i++) {
     int status;
 
-    status = snprintf(buffer_ptr, buffer_free, (i == 0) ? "%02x" : ":%02x",
+    status = ssnprintf(buffer_ptr, buffer_free, (i == 0) ? "%02x" : ":%02x",
                       (unsigned int)vb->val.bitstring[i]);
     assert(status >= 0);
 
@@ -995,7 +995,7 @@ static int csnmp_strvbcopy(char *dst, /* {{{ */
   else if (vb->type == ASN_BIT_STR)
     src = (char *)vb->val.bitstring;
   else if (vb->type == ASN_IPADDRESS) {
-    return snprintf(dst, dst_size,
+    return ssnprintf(dst, dst_size,
                     "%" PRIu8 ".%" PRIu8 ".%" PRIu8 ".%" PRIu8 "",
                     (uint8_t)vb->val.string[0], (uint8_t)vb->val.string[1],
                     (uint8_t)vb->val.string[2], (uint8_t)vb->val.string[3]);
@@ -1090,7 +1090,7 @@ static int csnmp_instance_list_add(csnmp_list_instances_t **head,
     value_t val = csnmp_value_list_to_value(
         vb, DS_TYPE_COUNTER,
         /* scale = */ 1.0, /* shift = */ 0.0, hd->name, dd->name);
-    snprintf(il->instance, sizeof(il->instance), "%llu", val.counter);
+    ssnprintf(il->instance, sizeof(il->instance), "%llu", val.counter);
   }
 
   /* TODO: Debugging output */
@@ -1220,7 +1220,7 @@ static int csnmp_dispatch_table(host_definition_t *host,
       if (data->instance_prefix == NULL)
         sstrncpy(vl.type_instance, temp, sizeof(vl.type_instance));
       else
-        snprintf(vl.type_instance, sizeof(vl.type_instance), "%s%s",
+        ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%s%s",
                  data->instance_prefix, temp);
     }
 

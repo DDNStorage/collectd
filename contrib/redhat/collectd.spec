@@ -22,17 +22,14 @@
 #   "Version:" tag matches the version from the tarball.
 #
 # - build the SRPM first:
-#   mock -r centos-6-x86_64 --buildsrpm --spec ~/rpmbuild/SPECS/collectd.spec \
-#     --sources ~/rpmbuild/SOURCES/
+#   mock -r alma+epel-8-x86_64 --buildsrpm --spec ~/rpmbuild/SPECS/collectd.spec --sources ~/rpmbuild/SOURCES/
 #
 # - then build the RPMs:
-#   mock -r centos-6-x86_64 --no-clean --rebuild \
-#     /var/lib/mock/centos-6-x86_64/result/collectd-X.Y.Z-NN.src.rpm
+#   mock -r alma+epel-8-x86_64 --no-clean --rebuild /var/lib/mock/alma+epel-8-x86_64/result/collectd-5.7.4.git-1.g.el8.src.rpm
 #
 # - you can also optionally enable/disable plugins which are disabled/enabled
 #   by default:
-#   mock -r centos-6-x86_64 --no-clean --without=java --with=oracle --rebuild \
-#     /var/lib/mock/centos-6-x86_64/result/collectd-X.Y.Z-NN.src.rpm
+#   mock -r alma+epel-8-x86_64 --no-clean --without=modbus --rebuild /var/lib/mock/alma+epel-8-x86_64/result/collectd-5.7.4.git-1.g.el8.src.rpm
 #
 
 %global _hardened_build 1
@@ -86,7 +83,6 @@
 %define with_log_logstash 0%{!?_without_log_logstash:1}
 %define with_logfile 0%{!?_without_logfile:1}
 %define with_lua 0%{!?_without_lua:1}
-%define with_lvm 0%{!?_without_lvm:1}
 %define with_madwifi 0%{!?_without_madwifi:1}
 %define with_mbmon 0%{!?_without_mbmon:1}
 %define with_mcelog 0%{!?_without_mcelog:1}
@@ -230,7 +226,6 @@
 %define with_gmond 0
 %define with_iptables 0
 %define with_ipvs 0
-%define with_lvm 0
 %define with_modbus 0
 %define with_netlink 0
 %define with_redis 0
@@ -255,13 +250,41 @@
 %define with_xmms 0
 %endif
 
+# Plugins not buildable on RHEL 8
+%if 0%{?rhel} && 0%{?rhel} >= 8
+%define with_smart 0
+%define with_ganglia 0
+%define with_gmond 0
+%define with_gps 0
+%define with_modbus 0
+%define with_ping 0
+%define with_mqtt 0
+%define with_ssh 0
+%endif
+
+# Plugins omitted by DDN
+%define with_smart 0
+%define with_turbostat 0
+%define with_java 0
+%define with_amqp 0
+%define with_gmond 0
+%define with_nut 0
+%define with_pinba 0
+%define with_ping 0
+%define with_dpdkstat 0
+%define with_turbostat 0
+%define with_redis 0
+%define with_write_redis 0
+%define with_gps 0
+%define with_varnish 0
+
 
 Summary:	Statistics collection and monitoring daemon
 Name:		collectd
-Version:	5.7.4.ddn
+Version:	5.7.5.ddn
 Release:	1.g%{?rev}%{?dist}
 URL:		https://collectd.org
-Source:		https://collectd.org/files/%{name}-%{version}.tar.bz2
+Source0:	%{_sourcedir}/%{name}-%{version}.tar.bz2
 License:	GPLv2
 Group:		System Environment/Daemons
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
@@ -561,17 +584,6 @@ The Lua plugin embeds a Lua interpreter into collectd and exposes the
 application programming interface (API) to Lua scripts.
 %endif
 
-%if %{with_lvm}
-%package lvm
-Summary:	LVM plugin for collectd
-Group:		System Environment/Daemons
-Requires:	%{name}%{?_isa} = %{version}-%{release}
-BuildRequires:	lvm2-devel
-%description lvm
-This plugin collects size of “Logical Volumes” (LV) and “Volume Groups” (VG)
-of Linux' “Logical Volume Manager” (LVM).
-%endif
-
 %if %{with_mcelog}
 %package mcelog
 Summary:	Mcelog plugin for collectd
@@ -777,7 +789,7 @@ Requires:	%{name}%{?_isa} = %{version}-%{release}
 	%if 0%{?rhel} && 0%{?rhel} < 6
 BuildRequires: python26-devel
 	%else
-BuildRequires: python-devel
+BuildRequires: python3-devel
 	%endif
 %description python
 The Python plugin embeds a Python interpreter into collectd and exposes the
@@ -1431,12 +1443,6 @@ The zabbix plugin send key and value to zabbix server
 %define _with_lua --disable-lua
 %endif
 
-%if %{with_lvm}
-%define _with_lvm --enable-lvm
-%else
-%define _with_lvm --disable-lvm
-%endif
-
 %if %{with_madwifi}
 %define _with_madwifi --enable-madwifi
 %else
@@ -2078,7 +2084,6 @@ The zabbix plugin send key and value to zabbix server
 	%{?_with_logfile} \
 	%{?_with_lpar} \
 	%{?_with_lua} \
-	%{?_with_lvm} \
 	%{?_with_madwifi} \
 	%{?_with_mbmon} \
 	%{?_with_mcelog} \
@@ -2687,11 +2692,6 @@ fi
 %files lua
 %{_mandir}/man5/collectd-lua*
 %{_libdir}/%{name}/lua.so
-%endif
-
-%if %{with_lvm}
-%files lvm
-%{_libdir}/%{name}/lvm.so
 %endif
 
 %if %{with_memcachec}
