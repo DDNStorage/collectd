@@ -81,6 +81,7 @@ struct wt_callback {
   char *node;
   char *service;
   char *host_tags;
+  char *metric_prefix;
 
   _Bool store_rates;
   _Bool always_append_ds;
@@ -477,6 +478,7 @@ static int wt_send_message(const char *key, const char *value, cdtime_t time,
   const char *tags = "";
   char message[1024];
   const char *host_tags = cb->host_tags ? cb->host_tags : "";
+  const char *metric_prefix = cb->metric_prefix ? cb->metric_prefix : "";
   const char *meta_tsdb = "tsdb_tags";
 
   /* skip if value is NaN */
@@ -498,8 +500,9 @@ static int wt_send_message(const char *key, const char *value, cdtime_t time,
   }
 
   status =
-      snprintf(message, sizeof(message), "put %s %.0f %s fqdn=%s %s %s\r\n",
-               key, CDTIME_T_TO_DOUBLE(time), value, host, tags, host_tags);
+      snprintf(message, sizeof(message), "put %s.%s %.0f %s fqdn=%s %s %s\r\n",
+               metric_prefix, key, CDTIME_T_TO_DOUBLE(time), value, host, tags,
+               host_tags);
   sfree(temp);
   if (status < 0)
     return -1;
@@ -649,6 +652,8 @@ static int wt_config_tsd(oconfig_item_t *ci) {
       cf_util_get_boolean(child, &cb->derive_rate);
     else if (strcasecmp("AlwaysAppendDS", child->key) == 0)
       cf_util_get_boolean(child, &cb->always_append_ds);
+    else if (strcasecmp("MetricPrefix", child->key) == 0)
+      cf_util_get_string(child, &cb->metric_prefix);
     else {
       ERROR("write_tsdb plugin: Invalid configuration "
             "option: %s.",
