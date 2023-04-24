@@ -652,7 +652,7 @@ static int wt_config_tsd(oconfig_item_t *ci) {
       cf_util_get_boolean(child, &cb->derive_rate);
     else if (strcasecmp("AlwaysAppendDS", child->key) == 0)
       cf_util_get_boolean(child, &cb->always_append_ds);
-    else if (strcasecmp("MetricPrefix", child->key) == 0)) {
+    else if (strcasecmp("MetricPrefix", child->key) == 0) {
       cf_util_get_string(child, &cb->metric_prefix);
       size_t len = strlen(cb->metric_prefix);
       if (len > 0 && cb->metric_prefix[len - 1] != '.') {
