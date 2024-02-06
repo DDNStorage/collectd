@@ -144,19 +144,18 @@ static char *format_labels(char *buffer, size_t buffer_size,
                            Io__Prometheus__Client__Metric const *m) {
   /* our metrics always have at least one and at most three labels. */
   assert(m->n_label >= 1);
-  assert(m->n_label <= 3);
+  assert(m->n_label <= 6);
 
 #define LABEL_KEY_SIZE DATA_MAX_NAME_LEN
 #define LABEL_VALUE_SIZE (2 * DATA_MAX_NAME_LEN - 1)
 #define LABEL_BUFFER_SIZE (LABEL_KEY_SIZE + LABEL_VALUE_SIZE + 4)
 
-  char *labels[3] = {
+  char *labels[6] = {
       (char[LABEL_BUFFER_SIZE]){0}, (char[LABEL_BUFFER_SIZE]){0},
-      (char[LABEL_BUFFER_SIZE]){0},
+      (char[LABEL_BUFFER_SIZE]){0}, (char[LABEL_BUFFER_SIZE]){0},
+      (char[LABEL_BUFFER_SIZE]){0}, (char[LABEL_BUFFER_SIZE]){0},
   };
 
-  /* N.B.: the label *names* are hard-coded by this plugin and therefore we
-   * know that they are sane. */
   for (size_t i = 0; i < m->n_label; i++) {
     char value[LABEL_VALUE_SIZE];
     ssnprintf(labels[i], LABEL_BUFFER_SIZE, "%s=\"%s\"", m->label[i]->name,
@@ -178,7 +177,7 @@ static void format_text(ProtobufCBuffer *buffer) {
   while (c_avl_iterator_next(iter, (void *)&unused_name, (void *)&fam) == 0) {
     char line[1024]; /* 4x DATA_MAX_NAME_LEN? */
 
-    ssnprintf(line, sizeof(line), "# HELP %s %s\n", fam->name, fam->help);
+    ssnprintf(line, sizeof(line), "\n# HELP %s %s\n", fam->name, fam->help);
     buffer->append(buffer, strlen(line), (uint8_t *)line);
 
     ssnprintf(line, sizeof(line), "# TYPE %s %s\n", fam->name,
@@ -381,42 +380,72 @@ static int metric_cmp(void const *a, void const *b) {
   return 0;
 }
 
-#define METRIC_INIT                                                            \
-  &(Io__Prometheus__Client__Metric) {                                          \
-    .label =                                                                   \
-        (Io__Prometheus__Client__LabelPair *[]){                               \
-            &(Io__Prometheus__Client__LabelPair){                              \
-                .name = NULL,                                                  \
-            },                                                                 \
-            &(Io__Prometheus__Client__LabelPair){                              \
-                .name = NULL,                                                  \
-            },                                                                 \
-            &(Io__Prometheus__Client__LabelPair){                              \
-                .name = NULL,                                                  \
-            },                                                                 \
-        },                                                                     \
-    .n_label = 0,                                                              \
+#define METRIC_INIT                                                                \
+  &(Io__Prometheus__Client__Metric) {                                              \
+    .label =                                                                       \
+        (Io__Prometheus__Client__LabelPair *[]){                                   \
+            &(Io__Prometheus__Client__LabelPair){                                  \
+                .name = NULL,                                                      \
+            },                                                                     \
+            &(Io__Prometheus__Client__LabelPair){                                  \
+                .name = NULL,                                                      \
+            },                                                                     \
+            &(Io__Prometheus__Client__LabelPair){                                  \
+                .name = NULL,                                                      \
+            },                                                                     \
+            &(Io__Prometheus__Client__LabelPair){                                  \
+                .name = NULL,                                                      \
+            },                                                                     \
+            &(Io__Prometheus__Client__LabelPair){                                  \
+                .name = NULL,                                                      \
+            },                                                                     \
+            &(Io__Prometheus__Client__LabelPair){                                  \
+                .name = NULL,                                                      \
+            },                                                                     \
+        },                                                                         \
+    .n_label = 0,                                                                  \
   }
 
-#define METRIC_ADD_LABELS(m, vl)                                               \
-  do {                                                                         \
-    if (strlen((vl)->plugin_instance) != 0) {                                  \
-      (m)->label[(m)->n_label]->name = (char *)(vl)->plugin;                   \
-      (m)->label[(m)->n_label]->value = (char *)(vl)->plugin_instance;         \
-      (m)->n_label++;                                                          \
-    }                                                                          \
-                                                                               \
-    if (strlen((vl)->type_instance) != 0) {                                    \
-      (m)->label[(m)->n_label]->name = "type";                                 \
-      if (strlen((vl)->plugin_instance) == 0)                                  \
-        (m)->label[(m)->n_label]->name = (char *)(vl)->plugin;                 \
-      (m)->label[(m)->n_label]->value = (char *)(vl)->type_instance;           \
-      (m)->n_label++;                                                          \
-    }                                                                          \
-                                                                               \
-    (m)->label[(m)->n_label]->name = "instance";                               \
-    (m)->label[(m)->n_label]->value = (char *)(vl)->host;                      \
-    (m)->n_label++;                                                            \
+#define METRIC_ADD_LABELS(m, vl)                                                   \
+  do {                                                                             \
+    int add_type = 1;                                                              \
+    if (strlen((vl)->plugin_instance) != 0) {                                      \
+      char *p_instance = strdup((vl)->plugin_instance);                            \
+      if (p_instance != NULL) {                                                    \
+        char* fields;                                                              \
+        char* outer_saveptr = NULL;                                                \
+        char* inner_saveptr = NULL;                                                \
+        fields = strtok_r(p_instance, " ", &outer_saveptr);                        \
+        while (fields != NULL) {                                                   \
+          char* inner_token = strtok_r(fields, "=", &inner_saveptr);               \
+          if (inner_token != NULL) {                                               \
+            (m)->label[(m)->n_label]->name = strdup(inner_token);                  \
+            inner_token = strtok_r(NULL, "=", &inner_saveptr);                     \
+            if (inner_token != NULL) {                                             \
+              (m)->label[(m)->n_label]->value = strdup(inner_token);               \
+            } else {                                                               \
+              (m)->label[(m)->n_label]->name = (char *)(vl)->plugin;               \
+              (m)->label[(m)->n_label]->value = (char *)(vl)->plugin_instance;     \
+            }                                                                      \
+            if (strcmp("operation", (m)->label[(m)->n_label]->name) == 0) {        \
+              add_type = 0;                                                        \
+            }                                                                      \
+            (m)->n_label++;                                                        \
+          }                                                                        \
+          fields = strtok_r(NULL, " ", &outer_saveptr);                            \
+        }                                                                          \
+        sfree(p_instance);                                                         \
+      }                                                                            \
+    }                                                                              \
+                                                                                   \
+    if (strlen((vl)->type_instance) != 0 && add_type) {                            \
+      (m)->label[(m)->n_label]->name = "type";                                     \
+      (m)->label[(m)->n_label]->value = (char *)(vl)->type_instance;               \
+      (m)->n_label++;                                                              \
+    }                                                                              \
+    (m)->label[(m)->n_label]->name = "fqdn";                                       \
+    (m)->label[(m)->n_label]->value = (char *)(vl)->host;                          \
+    (m)->n_label++;                                                                \
   } while (0)
 
 /* metric_clone allocates and initializes a new metric based on orig. */
@@ -653,15 +682,13 @@ metric_family_create(char *name, data_set_t const *ds, value_list_t const *vl,
  * the labels of a metric. */
 static char *metric_family_name(data_set_t const *ds, value_list_t const *vl,
                                 size_t ds_index) {
-  char const *fields[5] = {"collectd"};
-  size_t fields_num = 1;
+  char const *fields[4];
+  size_t fields_num = 0;
 
-  if (strcmp(vl->plugin, vl->type) != 0) {
-    fields[fields_num] = vl->plugin;
-    fields_num++;
+  if (strstr(vl->plugin, "lustre") == NULL) {
+    fields[fields_num++] = "node";
   }
-  fields[fields_num] = vl->type;
-  fields_num++;
+  fields[fields_num++] = vl->plugin;
 
   if (strcmp("value", ds->ds[ds_index].name) != 0) {
     fields[fields_num] = ds->ds[ds_index].name;
@@ -672,11 +699,10 @@ static char *metric_family_name(data_set_t const *ds, value_list_t const *vl,
    * cumulative metrics should have a "total" suffix. */
   if ((ds->ds[ds_index].type == DS_TYPE_COUNTER) ||
       (ds->ds[ds_index].type == DS_TYPE_DERIVE)) {
-    fields[fields_num] = "total";
-    fields_num++;
+    fields[fields_num++] = "total";
   }
 
-  char name[5 * DATA_MAX_NAME_LEN];
+  char name[4 * DATA_MAX_NAME_LEN];
   strjoin(name, sizeof(name), (char **)fields, fields_num, "_");
   return strdup(name);
 }

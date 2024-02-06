@@ -330,12 +330,12 @@ static int memory_read_internal(value_list_t *vl) {
    * kernels. So SReclaimable/SUnreclaim are submitted if available, and Slab
    * if not. */
   if (detailed_slab_info)
-    MEMORY_SUBMIT("used", mem_used, "buffered", mem_buffered, "cached",
-                  mem_cached, "free", mem_free, "slab_unrecl",
-                  mem_slab_unreclaimable, "slab_recl", mem_slab_reclaimable);
+    MEMORY_SUBMIT("MemUsed", mem_used, "Buffers", mem_buffered, "Cached",
+                  mem_cached, "MemFree", mem_free, "SUnreclaim",
+                  mem_slab_unreclaimable, "SReclaimable", mem_slab_reclaimable);
   else
-    MEMORY_SUBMIT("used", mem_used, "buffered", mem_buffered, "cached",
-                  mem_cached, "free", mem_free, "slab", mem_slab_total);
+    MEMORY_SUBMIT("MemUsed", mem_used, "Buffers", mem_buffered, "Cached",
+                  mem_cached, "MemFree", mem_free, "Slab", mem_slab_total);
 /* #endif KERNEL_LINUX */
 
 #elif HAVE_LIBKSTAT

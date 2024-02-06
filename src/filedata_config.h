@@ -317,7 +317,8 @@ struct filedata_math_entry {
 	char		*fme_left_operand;
 	char		*fme_right_operand;
 	char		*fme_operation;
-
+	char		*fme_plugin;
+	char		*fme_plugin_instance;
 	char		*fme_tsdb_name;	/* submit instance */
 	char		*fme_type;
 	char		*fme_type_instance;

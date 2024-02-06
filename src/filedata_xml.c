@@ -144,6 +144,8 @@ filedata_entry_free(struct filedata_entry *entry)
 #define FILEDATA_XML_ME_OPERATION	"operation"
 #define FILEDATA_XML_ME_RIGHT_OPERAND	"right_operand"
 #define FILEDATA_XML_ME_TSDB_NAME	"tsdb_name"
+#define FILEDATA_XML_ME_PLUGIN		"plugin"
+#define FILEDATA_XML_ME_PLUGIN_INSTANCE	"plugin_instance"
 #define FILEDATA_XML_ME_TYPE		"type"
 #define FILEDATA_XML_ME_TYPE_INSTANCE	"type_instance"
 #define FILEDATA_XML_SUBPATH		"subpath"
@@ -1083,6 +1085,14 @@ filedata_xml_math_entry_parse(struct filedata_definition *definition,
 			   FILEDATA_XML_ME_TSDB_NAME) == 0) {
 			status = filedata_xml_get_str(tmp,
 					&fme->fme_tsdb_name);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_PLUGIN) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_plugin);
+		} else if (strcmp((char *)tmp->name,
+			   FILEDATA_XML_ME_PLUGIN_INSTANCE) == 0) {
+			status = filedata_xml_get_str(tmp,
+					&fme->fme_plugin_instance);
 		} else if (strcmp((char *)tmp->name,
 			   FILEDATA_XML_ME_TYPE) == 0) {
 			status = filedata_xml_get_str(tmp,

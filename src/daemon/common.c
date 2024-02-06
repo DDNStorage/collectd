@@ -329,6 +329,25 @@ int strsplit(char *string, char **fields, size_t size) {
   return (int)i;
 }
 
+int strsplit_delimiter(char *string, char **fields, size_t size, char *delimiter) {
+  size_t i;
+  char *ptr;
+  char *saveptr;
+
+  i = 0;
+  ptr = string;
+  saveptr = NULL;
+  while ((fields[i] = strtok_r(ptr, delimiter, &saveptr)) != NULL) {
+    ptr = NULL;
+    i++;
+
+    if (i >= size)
+      break;
+  }
+
+  return (int)i;
+}
+
 int strjoin(char *buffer, size_t buffer_size, char **fields, size_t fields_num,
             const char *sep) {
   size_t avail = 0;
