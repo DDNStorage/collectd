@@ -167,6 +167,8 @@ static int df_read(void) {
     char disk_name[256];
     cu_mount_t *dup_ptr;
     uint64_t blk_free;
+    uint64_t blk_avail;
+    uint64_t blk_total;
     uint64_t blk_reserved;
     uint64_t blk_used;
 
@@ -262,13 +264,19 @@ static int df_read(void) {
     if (statbuf.f_blocks < statbuf.f_bfree)
       statbuf.f_blocks = statbuf.f_bfree;
 
-    blk_free = (uint64_t)statbuf.f_bavail;
+    blk_free = (uint64_t)statbuf.f_bfree;
+    blk_avail = (uint64_t)statbuf.f_bavail;
+    blk_total = (uint64_t)statbuf.f_blocks;
     blk_reserved = (uint64_t)(statbuf.f_bfree - statbuf.f_bavail);
     blk_used = (uint64_t)(statbuf.f_blocks - statbuf.f_bfree);
 
     if (values_absolute) {
       df_submit_one(disk_name, "df_complex", "free",
                     (gauge_t)(blk_free * blocksize));
+      df_submit_one(disk_name, "df_complex", "avail",
+                    (gauge_t)(blk_avail * blocksize));
+      df_submit_one(disk_name, "df_complex", "size",
+                    (gauge_t)(blk_total * blocksize));
       df_submit_one(disk_name, "df_complex", "reserved",
                     (gauge_t)(blk_reserved * blocksize));
       df_submit_one(disk_name, "df_complex", "used",
@@ -279,6 +287,10 @@ static int df_read(void) {
       if (statbuf.f_blocks > 0) {
         df_submit_one(disk_name, "percent_bytes", "free",
                       (gauge_t)((float_t)(blk_free) / statbuf.f_blocks * 100));
+        df_submit_one(disk_name, "percent_bytes", "avail",
+                      (gauge_t)((float_t)(blk_avail) / statbuf.f_blocks * 100));
+        df_submit_one(disk_name, "percent_bytes", "size",
+                      (gauge_t)((float_t)(blk_total) / statbuf.f_blocks * 100));
         df_submit_one(
             disk_name, "percent_bytes", "reserved",
             (gauge_t)((float_t)(blk_reserved) / statbuf.f_blocks * 100));
@@ -291,6 +303,8 @@ static int df_read(void) {
     /* inode handling */
     if (report_inodes && statbuf.f_files != 0 && statbuf.f_ffree != 0) {
       uint64_t inode_free;
+      uint64_t inode_avail;
+      uint64_t inode_total;
       uint64_t inode_reserved;
       uint64_t inode_used;
 
@@ -300,7 +314,9 @@ static int df_read(void) {
       if (statbuf.f_files < statbuf.f_ffree)
         statbuf.f_files = statbuf.f_ffree;
 
-      inode_free = (uint64_t)statbuf.f_favail;
+      inode_free = (uint64_t)statbuf.f_ffree;
+      inode_avail = (uint64_t)statbuf.f_favail;
+      inode_total = (uint64_t)statbuf.f_files;
       inode_reserved = (uint64_t)(statbuf.f_ffree - statbuf.f_favail);
       inode_used = (uint64_t)(statbuf.f_files - statbuf.f_ffree);
 
@@ -309,6 +325,12 @@ static int df_read(void) {
           df_submit_one(
               disk_name, "percent_inodes", "free",
               (gauge_t)((float_t)(inode_free) / statbuf.f_files * 100));
+          df_submit_one(
+              disk_name, "percent_inodes", "avail",
+              (gauge_t)((float_t)(inode_avail) / statbuf.f_files * 100));
+          df_submit_one(
+              disk_name, "percent_inodes", "total",
+              (gauge_t)((float_t)(inode_total) / statbuf.f_files * 100));
           df_submit_one(
               disk_name, "percent_inodes", "reserved",
               (gauge_t)((float_t)(inode_reserved) / statbuf.f_files * 100));
@@ -320,6 +342,8 @@ static int df_read(void) {
       }
       if (values_absolute) {
         df_submit_one(disk_name, "df_inodes", "free", (gauge_t)inode_free);
+        df_submit_one(disk_name, "df_inodes", "avail", (gauge_t)inode_avail);
+        df_submit_one(disk_name, "df_inodes", "total", (gauge_t)inode_total);
         df_submit_one(disk_name, "df_inodes", "reserved",
                       (gauge_t)inode_reserved);
         df_submit_one(disk_name, "df_inodes", "used", (gauge_t)inode_used);

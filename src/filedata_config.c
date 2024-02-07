@@ -392,6 +392,8 @@ void filedata_math_entry_free(struct filedata_math_entry *fme)
 	free(fme->fme_operation);
 	free(fme->fme_right_operand);
 	free(fme->fme_tsdb_name);
+	free(fme->fme_plugin);
+	free(fme->fme_plugin_instance);
 	free(fme->fme_type);
 	free(fme->fme_type_instance);
 	free(fme);

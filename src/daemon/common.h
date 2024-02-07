@@ -138,6 +138,27 @@ int strsplit(char *string, char **fields, size_t size);
 
 /*
  * NAME
+ *   strsplit
+ *
+ * DESCRIPTION
+ *   Splits a string into parts and stores pointers to the parts in `fields'.
+ *
+ * PARAMETERS
+ *   `string'      String to split. This string will be modified. `fields' will
+ *                 contain pointers to parts of this string, so free'ing it
+ *                 will destroy `fields' as well.
+ *   `fields'      Array of strings where pointers to the parts will be stored.
+ *   `size'        Number of elements in the array. No more than `size'
+ *                 pointers will be stored in `fields'.
+ *   `delimiter'   Character at which the string is split.
+ *
+ * RETURN VALUE
+ *    Returns the number of parts stored in `fields'.
+ */
+int strsplit_delimiter(char *string, char **fields, size_t size, char *delimiter);
+
+/*
+ * NAME
  *   strjoin
  *
  * DESCRIPTION
