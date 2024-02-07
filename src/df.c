@@ -275,7 +275,7 @@ static int df_read(void) {
                     (gauge_t)(blk_free * blocksize));
       df_submit_one(disk_name, "df_complex", "avail",
                     (gauge_t)(blk_avail * blocksize));
-      df_submit_one(disk_name, "df_complex", "total",
+      df_submit_one(disk_name, "df_complex", "size",
                     (gauge_t)(blk_total * blocksize));
       df_submit_one(disk_name, "df_complex", "reserved",
                     (gauge_t)(blk_reserved * blocksize));
@@ -289,7 +289,7 @@ static int df_read(void) {
                       (gauge_t)((float_t)(blk_free) / statbuf.f_blocks * 100));
         df_submit_one(disk_name, "percent_bytes", "avail",
                       (gauge_t)((float_t)(blk_avail) / statbuf.f_blocks * 100));
-        df_submit_one(disk_name, "percent_bytes", "total",
+        df_submit_one(disk_name, "percent_bytes", "size",
                       (gauge_t)((float_t)(blk_total) / statbuf.f_blocks * 100));
         df_submit_one(
             disk_name, "percent_bytes", "reserved",

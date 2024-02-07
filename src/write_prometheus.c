@@ -438,6 +438,13 @@ static int metric_cmp(void const *a, void const *b) {
       }                                                                            \
     }                                                                              \
                                                                                    \
+    if (strlen((vl)->type) != 0) {                                                 \
+      if (strcmp((vl)->type, "derive") != 0 && strcmp((vl)->type, "gauge") != 0) { \
+        (m)->label[(m)->n_label]->name = "kind";                                   \
+        (m)->label[(m)->n_label]->value = (char *)(vl)->type;                      \
+        (m)->n_label++;                                                            \
+      }                                                                            \
+    }                                                                              \
     if (strlen((vl)->type_instance) != 0 && add_type) {                            \
       (m)->label[(m)->n_label]->name = "type";                                     \
       (m)->label[(m)->n_label]->value = (char *)(vl)->type_instance;               \

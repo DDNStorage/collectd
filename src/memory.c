@@ -271,6 +271,7 @@ static int memory_read_internal(value_list_t *vl) {
   _Bool detailed_slab_info = 0;
 
   gauge_t mem_total = 0;
+  gauge_t mem_avail = 0;
   gauge_t mem_used = 0;
   gauge_t mem_buffered = 0;
   gauge_t mem_cached = 0;
@@ -292,6 +293,8 @@ static int memory_read_internal(value_list_t *vl) {
       val = &mem_total;
     else if (strncasecmp(buffer, "MemFree:", 8) == 0)
       val = &mem_free;
+    else if (strncasecmp(buffer, "MemAvailable:", 13) == 0)
+      val = &mem_avail;
     else if (strncasecmp(buffer, "Buffers:", 8) == 0)
       val = &mem_buffered;
     else if (strncasecmp(buffer, "Cached:", 7) == 0)
@@ -330,12 +333,14 @@ static int memory_read_internal(value_list_t *vl) {
    * kernels. So SReclaimable/SUnreclaim are submitted if available, and Slab
    * if not. */
   if (detailed_slab_info)
-    MEMORY_SUBMIT("MemUsed", mem_used, "Buffers", mem_buffered, "Cached",
-                  mem_cached, "MemFree", mem_free, "SUnreclaim",
-                  mem_slab_unreclaimable, "SReclaimable", mem_slab_reclaimable);
+    MEMORY_SUBMIT("MemTotal", mem_total, "MemAvailable", mem_avail, "MemUsed",
+                  mem_used, "Buffers", mem_buffered, "Cached", mem_cached,
+                  "MemFree", mem_free, "SUnreclaim", mem_slab_unreclaimable,
+                  "SReclaimable", mem_slab_reclaimable);
   else
-    MEMORY_SUBMIT("MemUsed", mem_used, "Buffers", mem_buffered, "Cached",
-                  mem_cached, "MemFree", mem_free, "Slab", mem_slab_total);
+    MEMORY_SUBMIT("MemTotal", mem_total, "MemAvailable", mem_avail, "MemUsed",
+                  mem_used, "Buffers", mem_buffered, "Cached", mem_cached,
+                  "MemFree", mem_free, "Slab", mem_slab_total);
 /* #endif KERNEL_LINUX */
 
 #elif HAVE_LIBKSTAT
