@@ -1538,8 +1538,10 @@ filedata_submit_math_instance(struct filedata_entry *entry)
 							fme->fme_operation,
 							fhme_found->fhme_value);
 				filedata_instance_submit(fhme->fhme_host,
-						fhme->fhme_plugin,
-						fhme->fhme_plugin_instance,
+						fme->fme_plugin ?
+						fme->fme_plugin : fhme->fhme_plugin,
+						fme->fme_plugin_instance ?
+						fme->fme_plugin_instance : fhme->fhme_plugin_instance,
 						fme->fme_type ?
 						fme->fme_type : fhme->fhme_type,
 						fme->fme_type_instance ?
