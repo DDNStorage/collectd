@@ -1,0 +1,22 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ master-ddn ]
+  pull_request:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    container:
+      image: centos:7
+    timeout-minutes: 50
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        yum -y install epel-release redhat-lsb flex bison rpm-build automake libtool
+    - name: Build
+      run: ./build.sh
